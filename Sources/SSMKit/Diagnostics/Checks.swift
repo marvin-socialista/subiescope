@@ -336,6 +336,157 @@ enum Checks {
         return out
     }
 
+    // MARK: Knock report
+
+    /// Seconds for which `predicate` held (gaps over half a second don't count).
+    static func time(_ ds: DataSet, where predicate: (DataSet.Row) -> Bool) -> Double {
+        var total = 0.0
+        for i in ds.rows.indices.dropFirst() {
+            let dt = ds.rows[i].t - ds.rows[i - 1].t
+            if dt > 0, dt <= 0.5, predicate(ds.rows[i]) { total += dt }
+        }
+        return total
+    }
+
+    enum KnockLevel: String {
+        case none = "None", light = "Light", moderate = "Moderate", heavy = "Heavy"
+    }
+
+    /// How much knock, where, and why: the core of the Knock check.
+    static func knockReport(_ drive: DataSet) -> [Finding] {
+        guard drive.has("fbkc") else {
+            return [Finding(.fail, "No knock data", "Feedback knock correction was not received, so knock can't be measured.")]
+        }
+        let driving = drive.filter { ($0["rpm"] ?? 0) > 1000 }
+        let loaded: @Sendable (DataSet.Row) -> Bool = { ($0["throttle"] ?? 0) >= 40 || ($0["mrp"] ?? -100) > 0 }
+        let knocking: @Sendable (DataSet.Row) -> Bool = { ($0["fbkc"] ?? 0) < -0.3 }
+
+        struct Event {
+            var worst: Double, rpm: Double, throttle: Double, loaded: Bool
+            var iat: Double?, lambda: Double?, mrp: Double?, coolant: Double?
+        }
+        let events: [Event] = driving.segments(gap: 0.5, where: knocking).compactMap { seg in
+            guard let row = seg.rows.min(by: { ($0["fbkc"] ?? 0) < ($1["fbkc"] ?? 0) }) else { return nil }
+            return Event(worst: row["fbkc"] ?? 0, rpm: row["rpm"] ?? 0, throttle: row["throttle"] ?? 0,
+                         loaded: seg.rows.contains(where: loaded), iat: row["iat"], lambda: row["lambda"], mrp: row["mrp"],
+                         coolant: row["coolant"])
+        }
+        let loadedEvents = events.filter(\.loaded)
+        let lightEvents = events.filter { !$0.loaded }
+        let loadTime = time(driving, where: loaded)
+        let pulledTime = time(driving) { loaded($0) && knocking($0) }
+        let rate = Double(loadedEvents.count) / Swift.max(loadTime / 60, 0.25)
+        let worst = loadedEvents.map(\.worst).min() ?? 0
+        let flkc = drive.min("flkc") ?? 0
+        let iamValues = drive.values("iam")
+        let iamMin = iamValues.min()
+
+        let level: KnockLevel
+        if worst < -2.81 || flkc < -2.81 || (iamMin ?? 1) < 0.8 {
+            level = .heavy
+        } else if worst < -1.41 || rate > 3 || flkc < -1.41 || (iamMin ?? 1) < 0.99 {
+            level = .moderate
+        } else if !loadedEvents.isEmpty || flkc < -0.01 {
+            level = .light
+        } else {
+            level = .none
+        }
+
+        var out: [Finding] = []
+        let summary = loadedEvents.isEmpty
+            ? "no knock under load in \(fmt(loadTime, 0)) s of load"
+            : "\(loadedEvents.count) event\(loadedEvents.count == 1 ? "" : "s") under load (\(fmt(rate, 1)) per minute), worst \(fmt(worst, 2))°"
+        switch level {
+        case .none:
+            out.append(Finding(.pass, "Knock level: None", "The ECU never had to pull timing under load. Your engine runs clean.", measured: summary))
+        case .light:
+            out.append(Finding(.pass, "Knock level: Light",
+                               "Only small, occasional corrections (up to −1.4°). Every Subaru does this now and then; it's not a problem.",
+                               measured: summary))
+        case .moderate:
+            out.append(Finding(.warning, "Knock level: Moderate",
+                               "The ECU regularly pulls timing, or has learned to. The engine is protecting itself, but it loses power and it's worth finding the cause (see below).",
+                               measured: summary))
+        case .heavy:
+            out.append(Finding(.fail, "Knock level: Heavy",
+                               "Deep or learned timing corrections: the engine is knocking hard or often. Drive gently and avoid boost until it's sorted; sustained heavy knock can damage pistons and ringlands.",
+                               measured: summary))
+        }
+        if loadTime > 0, !loadedEvents.isEmpty {
+            let depth = Stats.mean(driving.filter { loaded($0) && knocking($0) }.values("fbkc"))
+            out.append(Finding(.info, "Timing pulled under load", "How long the ECU held timing back, and by how much on average.",
+                               measured: "\(fmt(pulledTime, 1)) s of \(fmt(loadTime, 0)) s (\(fmt(pulledTime / loadTime * 100, 0)) %), average \(fmt(depth, 2))°"))
+        }
+
+        // Where it happens
+        if loadedEvents.count >= 2 {
+            let bands = Dictionary(grouping: loadedEvents) { Int($0.rpm / 1000) }
+            if let (band, group) = bands.max(by: { $0.value.count < $1.value.count }) {
+                let full = group.filter { $0.throttle >= 85 }.count
+                let load = full * 2 >= group.count ? "at full throttle" : "at part throttle"
+                out.append(Finding(.info, "Most knock at \(band * 1000)–\((band + 1) * 1000) rpm \(load)",
+                                   "\(group.count) of \(loadedEvents.count) events. Knock in the mid rpm range under load usually points at fuel quality, heat or the tune; at the top end more often at timing in the tune.",
+                                   measured: "\(group.count) of \(loadedEvents.count)"))
+            }
+        }
+
+        // Learned corrections
+        if let iamMin, let first = iamValues.first, let last = iamValues.last {
+            if last < first - 0.01 {
+                out.append(Finding(.fail, "IAM dropped during this drive",
+                                   "The ECU lowered its overall timing confidence while you drove: it kept hearing knock.",
+                                   measured: "\(fmt(first, 3)) → \(fmt(last, 3))"))
+            } else if iamMin < 0.99 {
+                out.append(Finding(iamMin < 0.8 ? .fail : .warning, "IAM is below 1.0",
+                                   "The ECU has reduced timing everywhere after knock in the past. It recovers by itself once the cause is gone; resetting the ECU restarts learning.",
+                                   measured: fmt(iamMin, 3)))
+            } else {
+                out.append(Finding(.pass, "IAM stayed at 1.0", "The ECU has full confidence in the timing.", measured: fmt(iamMin, 3)))
+            }
+        }
+        if drive.has("flkc") {
+            out.append(flkc >= -0.01
+                ? Finding(.pass, "No learned knock correction", "", measured: fmt(flkc, 2, "°"))
+                : Finding(flkc < -2.81 ? .fail : (flkc < -1.41 ? .warning : .info), "Learned knock correction",
+                          "Fine learning knock correction: the ECU remembers to pull timing in the load/rpm cells where knock happened repeatedly.",
+                          measured: fmt(flkc, 2, "°")))
+        }
+
+        // Why: conditions at the moment of knock
+        let hot = loadedEvents.compactMap(\.iat)
+        if let meanIAT = Stats.mean(hot), meanIAT > 45 {
+            out.append(Finding(.warning, "Hot intake air when it knocked",
+                               "Hot intake air makes knock much more likely. Heat soak after idling or slow traffic is typical for top-mount intercoolers: drive a few minutes before pulling.",
+                               measured: "average \(fmt(meanIAT, 0)) °C"))
+        }
+        // Only real boost counts: at light boost the ECU is still near closed loop.
+        let lean = loadedEvents.filter { ($0.mrp ?? 0) > 60 }.compactMap(\.lambda)
+        if let leanest = lean.max(), leanest > 0.86 {
+            out.append(Finding(.warning, "Lean mixture when it knocked",
+                               "Under boost the mixture was leaner than it should be (about λ 0.75–0.82). Lean and knock together is dangerous: check fuel pressure, pump and injectors.",
+                               measured: "up to λ \(fmt(leanest, 2))"))
+        }
+        if let coolant = loadedEvents.compactMap(\.coolant).max(), coolant > 100 {
+            out.append(Finding(.warning, "Hot engine when it knocked", "The coolant was above 100 °C. A hot engine knocks more easily: check the cooling system.",
+                               measured: fmt(coolant, 0, "°C")))
+        }
+        if !lightEvents.isEmpty {
+            out.append(Finding(.info, "Corrections at light load",
+                               "\(lightEvents.count) small correction\(lightEvents.count == 1 ? "" : "s") while cruising or coasting. These are usually false knock: a rattling heat shield, clutch or driveline noise, or a bumpy road. Not a problem by themselves.",
+                               measured: "\(lightEvents.count)"))
+        }
+
+        if level == .moderate || level == .heavy {
+            out.append(Finding(.info, "What to do",
+                               "1. Fill up with the highest octane you can get (98 RON or better; JDM cars are tuned for Japanese premium, about 100 RON). "
+                                   + "2. Avoid pulls after idling in traffic; let the intercooler cool first. "
+                                   + "3. Check for boost and vacuum leaks, and the spark plugs (gap and heat range). "
+                                   + "4. A loose knock sensor causes false knock: check it is tightened to spec. "
+                                   + "5. If it keeps happening on good fuel, have the tune looked at."))
+        }
+        return out
+    }
+
     static func wotFueling(_ wotRows: DataSet) -> [Finding] {
         let high = wotRows.filter { ($0["rpm"] ?? 0) >= 4000 }
         guard let mean = high.mean("lambda"), let worst = high.max("lambda") else { return [] }

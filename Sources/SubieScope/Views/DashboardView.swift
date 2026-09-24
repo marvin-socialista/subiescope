@@ -316,6 +316,13 @@ struct DashboardPlaybackBar: View {
             }
             .fixedSize()
             Button("Charts") { model.section = .logs }
+            Button {
+                model.closePlayback()
+                Task { await model.connect() }
+            } label: {
+                Label("Connect to Car", systemImage: "bolt.horizontal.fill")
+            }
+            .help("Stop the playback and show live data from the car")
             Button { model.closePlayback() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
                 .help("Close the log")

@@ -3,7 +3,7 @@ import Foundation
 /// Faults the demo car can simulate, to see how the recipes react.
 public enum DemoFault: String, CaseIterable, Sendable, Identifiable {
     case none, dirtyMAF, vacuumLeak, deadFrontSensor, lazyFrontSensor, deadRearO2, failedCatalyst, stuckAVCS,
-         weakAlternator, stuckThermostat, deadFan, knock, leanAtWOT, boostLeak, misfireCylinder3, wornPedal, badCoolantSensor
+         weakAlternator, stuckThermostat, deadFan, mildKnock, knock, leanAtWOT, boostLeak, misfireCylinder3, wornPedal, badCoolantSensor
 
     public var id: String { rawValue }
 
@@ -20,6 +20,7 @@ public enum DemoFault: String, CaseIterable, Sendable, Identifiable {
         case .weakAlternator: return "Weak alternator"
         case .stuckThermostat: return "Thermostat stuck open"
         case .deadFan: return "Radiator fan not working"
+        case .mildKnock: return "Mild knock (small, frequent)"
         case .knock: return "Knock under load"
         case .leanAtWOT: return "Lean at full throttle"
         case .boostLeak: return "Boost leak"
@@ -222,6 +223,23 @@ public final class DemoWorld: @unchecked Sendable {
             }
             if s.target == -66 { s.target = s.boost }
             s.speed = speedFor(s.rpm, 3)
+        case .rollOn:
+            // 4th gear: from 2,000 rpm at three-quarter throttle to 4,500 rpm, ease off, repeat.
+            let c = tau.truncatingRemainder(dividingBy: 11)
+            s.gear = 4
+            if c < 2 {
+                s.rpm = 2000 + wobble * 15; s.throttle = 15; s.pedal = 14; s.boost = -35
+            } else if c < 8 {
+                let f = (c - 2) / 6
+                s.rpm = lerp(2000, 4500, f); s.throttle = 75; s.pedal = 72
+                s.target = s.rpm < 3000 ? lerp(-10, 110, (s.rpm - 2000) / 1000) : 110
+                s.boost = Swift.min(s.target, lerp(-20, 112, (s.rpm - 2000) / 1100)) + wobble * 2
+                s.mixture = s.boost > 50 ? 0.82 : 0.95
+            } else {
+                s.rpm = lerp(4500, 2000, (c - 8) / 3); s.throttle = 0; s.boost = -60; s.fuelCut = true
+            }
+            if s.target == -66 { s.target = s.boost }
+            s.speed = speedFor(s.rpm, 4)
         case .cruise:
             // Steps through 50, 80 and 100 km/h so every cruise step finds its speed.
             let targets: [Double] = [50, 80, 100]
@@ -304,7 +322,11 @@ public final class DemoWorld: @unchecked Sendable {
         // Knock (demo loop has one small event; the knock fault adds real knock)
         var fbkc = s.wotKnockZone ? (fault == .knock ? -4.22 : -1.41) : 0
         if fault == .knock && s.throttle > 85 && s.rpm > 3800 && s.rpm < 5200 { fbkc = -4.22 }
-        let flkc = fault == .knock ? -2.81 : (s.throttle > 85 && s.rpm > 5200 && s.rpm < 6000 ? -1.41 : 0)
+        // Part-throttle knock in the mid-rpm, high-load area where it usually shows up first.
+        let partLoad = s.throttle > 50 && s.rpm > 2400 && s.rpm < 4200
+        if fault == .knock && partLoad && sin(t * 4.3) > 0.55 { fbkc = sin(t * 1.3) > 0 ? -4.22 : -2.11 }
+        if fault == .mildKnock && partLoad && sin(t * 4.3) > 0.7 { fbkc = -1.41 }
+        let flkc = fault == .knock ? -2.81 : (fault == .mildKnock ? -1.41 : (s.throttle > 85 && s.rpm > 5200 && s.rpm < 6000 ? -1.41 : 0))
         let iam = fault == .knock ? 0.75 : 1.0
         if fbkc < 0 { knockEvents += dt * 4 }
 

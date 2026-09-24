@@ -380,8 +380,12 @@ final class AppModel {
 
     // MARK: Ports
 
+    /// USB cables with a known chip, including ones still waiting for a driver.
+    var cables: [USBCable] = []
+
     func refreshPorts() {
         ports = SerialPortList.available()
+        cables = CableScanner.scan()
         let valid = Set(ports.map(\.path)).union([Self.demoPortID])
         if selectedPortID == nil || !valid.contains(selectedPortID!) {
             selectedPortID = ports.first(where: { $0.isFTDI })?.path ?? ports.first(where: { $0.isUSB })?.path ?? ports.first?.path

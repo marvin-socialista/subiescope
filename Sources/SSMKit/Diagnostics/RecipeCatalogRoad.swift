@@ -38,6 +38,47 @@ extension RecipeCatalog {
             return f
         })
 
+    static let knock = Recipe(
+        id: "knock", setting: .driving, title: "Knock check", symbol: "waveform.badge.exclamationmark",
+        category: "Engine",
+        summary: "Drives through the conditions where knock happens and measures how much there is: how often the ECU pulls timing, how deep, at which rpm and load, and whether it has learned to pull timing. It also looks at what was going on when it knocked.",
+        symptoms: ["Pinging or rattling under acceleration", "Down on power, especially on hot days", "After a tune or a new intake", "Unsure about fuel quality", "IAM below 1.0"],
+        conditions: ["Engine fully warm", "A road where you can accelerate in 4th gear safely", "Note which fuel is in the tank"],
+        safety: roadSafety,
+        minutes: 8,
+        probes: [P.rpm, P.throttle, P.coolant, P.fbkc, opt(P.flkc), opt(P.iam), opt(P.timing), opt(P.mrp), opt(P.iat),
+                 opt(P.lambda), opt(P.load), opt(P.speed)],
+        steps: [warmUpStep(),
+                cruiseStep(title: "Cruise", seconds: 60, speed: 40...120,
+                           instruction: "Drive normally at a steady speed for a minute. This shows whether there is knock even at light load."),
+                RecipeStep("Roll-ons in 4th gear",
+                           "In 4th gear at about 2,000 rpm, press the pedal to about three quarters and accelerate to 4,500 rpm, then ease off. Repeat four times. Medium rpm under high load is where knock usually shows up first.",
+                           goal: .collect(seconds: 30, whenever: Condition("Three-quarter throttle above 1,800 rpm") { ($0["throttle"] ?? 0) >= 50 && ($0["rpm"] ?? 0) >= 1800 }),
+                           watch: [Watch("fbkc", expected: -1.41...0), Watch("rpm"), Watch("mrp"), Watch("iat", expected: 0...45), Watch("iam", expected: 1...1)],
+                           tips: [
+                               Tip(urgent: true, when: { ($0["fbkc"] ?? 0) <= -4 }) { r in "Heavy knock (\(fmt(r["fbkc"], 1))°). Ease off now." },
+                               Tip(when: { let th = $0["throttle"] ?? 0; return th > 10 && th < 50 && ($0["rpm"] ?? 0) > 1500 }) { r in
+                                   "Press further: about three quarters throttle (now \(fmt(r["throttle"], 0)) %)."
+                               },
+                               Tip(when: { ($0["rpm"] ?? 0) > 5000 }, "That's high enough: ease off and start the next roll-on from 2,000 rpm."),
+                               Tip(when: { ($0["throttle"] ?? 0) <= 10 && ($0["rpm"] ?? 0) > 1000 }, "Next roll-on: 4th gear, about 2,000 rpm, then three-quarter throttle."),
+                           ],
+                           demo: .rollOn),
+                pullStep(title: "Full-throttle pull (optional)"),
+                cruiseStep(title: "Cruise to finish", seconds: 20, speed: 30...130,
+                           instruction: "Cruise normally for a moment. Skipped the pull? That's fine, SubieScope still has enough data.")],
+        lookFor: ["How often the ECU pulls timing because of knock (feedback knock correction)",
+                  "How deep the corrections go: up to −1.4° now and then is normal, −2.8° or more is a problem",
+                  "At which rpm and load it happens",
+                  "Whether the ECU has learned to pull timing (fine learning correction and IAM)",
+                  "Hot intake air, a lean mixture or a hot engine at the moment of knock"],
+        headlines: (pass: "No worrying knock: your engine runs clean.",
+                    warning: "Some knock: worth finding the cause.",
+                    fail: "Serious knock: drive gently until it's sorted."),
+        analyze: { a in
+            Checks.warmUp(a) + Checks.knockReport(Checks.warmRows(a))
+        })
+
     static let avcs = Recipe(
         id: "avcs", setting: .driving, title: "AVCS (variable valve timing)", symbol: "gearshape.2",
         category: "Engine",

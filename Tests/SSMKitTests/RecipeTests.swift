@@ -38,6 +38,8 @@ struct RecipeTests {
         ("warm-up", .stuckThermostat, .warning),
         ("cooling", .deadFan, .fail),
         ("pull", .knock, .fail),
+        ("knock", .knock, .fail),
+        ("knock", .mildKnock, .warning),
         ("pull", .leanAtWOT, .fail),
         ("pull", .boostLeak, .fail),
         ("avcs", .stuckAVCS, .fail),
@@ -45,6 +47,18 @@ struct RecipeTests {
     func faultIsFound(_ id: String, _ fault: DemoFault, _ expected: Severity) {
         let r = run(id, fault)
         #expect(r.verdict >= expected, "\(id) with \(fault):\n\(describe(r.findings))")
+    }
+
+    @Test func knockIsQuantified() {
+        let healthy = run("knock", .none).findings
+        #expect(healthy.contains { $0.title == "Knock level: Light" || $0.title == "Knock level: None" }, "\(describe(healthy))")
+        let mild = run("knock", .mildKnock).findings
+        #expect(mild.contains { $0.title == "Knock level: Moderate" }, "\(describe(mild))")
+        let heavy = run("knock", .knock).findings
+        #expect(heavy.contains { $0.title == "Knock level: Heavy" }, "\(describe(heavy))")
+        #expect(heavy.contains { $0.title.hasPrefix("Most knock at") && $0.title.contains("part throttle") }, "\(describe(heavy))")
+        #expect(heavy.contains { $0.title == "What to do" })
+        print("--- heavy knock report ---\n" + describe(heavy))
     }
 
     @Test func specificDiagnoses() {

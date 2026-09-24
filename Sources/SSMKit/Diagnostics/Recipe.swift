@@ -55,7 +55,7 @@ public struct Watch: Sendable {
 
 /// What the demo ECU should act out during a step.
 public enum DemoScenario: String, Sendable, CaseIterable {
-    case engineOff, coldEngineOff, idle, idleWithLoads, hold2500, revAndRelease, pedalSweep, wotPull, warmUp, coldStart, cruise
+    case engineOff, coldEngineOff, idle, idleWithLoads, hold2500, revAndRelease, pedalSweep, wotPull, rollOn, warmUp, coldStart, cruise
 }
 
 /// Live coaching: shown while `when` holds for the latest sample.

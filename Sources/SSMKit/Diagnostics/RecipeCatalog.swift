@@ -6,7 +6,7 @@ import Foundation
 public enum RecipeCatalog {
     public static let all: [Recipe] = [
         frontAF, rearO2, maf, idle, charging, pedal, coldSensors, warmUp, cooling,
-        pull, avcs, fuelTrimsDriving, catalyst, heatSoak, throttleResponse, misfireDriving,
+        pull, knock, avcs, fuelTrimsDriving, catalyst, heatSoak, throttleResponse, misfireDriving,
     ]
 
     public static func recipe(id: String) -> Recipe? { all.first { $0.id == id } }
