@@ -4,6 +4,7 @@ import SwiftUI
 struct DiagnosticsView: View {
     @Environment(AppModel.self) private var model
     @State private var confirmClear = false
+    @State private var exportError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,6 +28,11 @@ struct DiagnosticsView: View {
         } message: {
             Text("This erases all stored trouble codes and also resets what the ECU has learned: fuel trims (A/F learning), IAM and fine knock learning start over. The car may idle and drive slightly differently until it relearns.\n\nAfterwards: switch the ignition OFF, wait 10 seconds, switch it ON again.")
         }
+        .alert("Couldn't save the codes", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK") {}
+        } message: {
+            Text(exportError ?? "")
+        }
     }
 
     private var header: some View {
@@ -46,6 +52,18 @@ struct DiagnosticsView: View {
             }
             Spacer()
             if model.codeReadState == .reading { ProgressView().controlSize(.small) }
+            Menu {
+                Button("Copy Codes") { copyToPasteboard(TroubleCodeExport(model: model).text(withHelp: false)) }
+                Button("Copy Codes with Causes and Fixes") { copyToPasteboard(TroubleCodeExport(model: model).text(withHelp: true)) }
+                Divider()
+                Button("Save as PDF…") { save(pdf: true) }
+                Button("Save as Text…") { save(pdf: false) }
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .fixedSize()
+            .help("Copy or save every code with its causes and fixes, e.g. for your mechanic or a forum")
+            .disabled(!isRead)
             Button("Clear Memory…") { confirmClear = true }
                 .disabled(!model.connection.isConnected)
             Button("Read Codes") { Task { await model.readTroubleCodes() } }
@@ -88,6 +106,30 @@ struct DiagnosticsView: View {
         if case .read = model.codeReadState { return true }
         return false
     }
+
+    /// Saves every code with its causes and fixes.
+    private func save(pdf: Bool) {
+        let report = TroubleCodeExport(model: model)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [pdf ? .pdf : .plainText]
+        panel.nameFieldStringValue = report.fileName
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            if pdf {
+                try report.writePDF(to: url)
+            } else {
+                try report.text(withHelp: true).write(to: url, atomically: true, encoding: .utf8)
+            }
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+}
+
+private func copyToPasteboard(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
 }
 
 /// A trouble code in the list; clicking it shows what it means and how to fix it.
@@ -110,6 +152,10 @@ private struct CodeRow: View {
         }
         .buttonStyle(.plain)
         .help("Show causes and fixes")
+        .contextMenu {
+            Button("Copy Code") { copyToPasteboard(code.line) }
+            Button("Copy Code with Causes and Fixes") { copyToPasteboard(code.helpText) }
+        }
         .popover(isPresented: $showingHelp, arrowEdge: .trailing) {
             TroubleCodeHelpView(code: code, tint: tint)
         }
@@ -119,6 +165,7 @@ private struct CodeRow: View {
 struct TroubleCodeHelpView: View {
     let code: DiagnosticCodeDefinition
     let tint: Color
+    @State private var copied = false
 
     var body: some View {
         ScrollView {
@@ -126,12 +173,25 @@ struct TroubleCodeHelpView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     CodeBadge(code: code.code, tint: tint)
                     Text(code.title).font(.headline)
+                    Spacer(minLength: 0)
+                    Button {
+                        copyToPasteboard(code.helpText)
+                        copied = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            copied = false
+                        }
+                    } label: {
+                        Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Copy this explanation")
                 }
                 if let help = code.help {
                     Text(help.meaning)
                     HelpList(title: "Possible causes", systemImage: "magnifyingglass", items: help.causes, numbered: false)
                     HelpList(title: "How to fix", systemImage: "wrench.and.screwdriver", items: help.fixes, numbered: true)
-                    Text("General guidance for Subaru engines. Check the service manual for your model's exact values and wiring.")
+                    Text(TroubleCodeExport.disclaimer)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -186,6 +246,19 @@ private struct CodeBadge: View {
 extension DiagnosticCodeDefinition {
     /// "Crankshaft pos. sensor A malfunction", or the raw name when it has no code prefix.
     var title: String { summary.isEmpty ? name : summary.capitalizedSentence }
+
+    /// "P0420 Cat efficiency below threshold"
+    var line: String { "\(code) \(title)" }
+
+    /// The code with its meaning, causes and fixes as plain text, as the help popover shows it.
+    var helpText: String {
+        guard let help else { return line }
+        var lines = [line, "", help.meaning, "", "Possible causes:"]
+        lines += help.causes.map { "- \($0)" }
+        lines += ["", "How to fix:"]
+        lines += help.fixes.enumerated().map { "\($0.offset + 1). \($0.element)" }
+        return lines.joined(separator: "\n")
+    }
 }
 
 struct StatusChip: View {
