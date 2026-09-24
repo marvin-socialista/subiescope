@@ -1,0 +1,12 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+xcuserdata/
+.DS_Store
+# RomRaider definitions have no explicit license; scripts/fetch-definitions.sh downloads them.
+Sources/SSMKit/Resources/Definitions/*.xml
+
+# Notes for AI assistants, kept local
+CLAUDE.md
+.claude/

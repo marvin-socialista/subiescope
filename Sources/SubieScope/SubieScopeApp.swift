@@ -1,0 +1,79 @@
+import SwiftUI
+
+@main
+struct SubieScopeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var model = AppModel.shared
+
+    var body: some Scene {
+        // One main window: every view shares the same connection and model.
+        Window("SubieScope", id: "main") {
+            ContentView()
+                .environment(model)
+                .frame(minWidth: 1020, minHeight: 640)
+        }
+        .defaultSize(width: 1280, height: 820)
+        .windowToolbarStyle(.unified)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About SubieScope") { About.showPanel() }
+            }
+            CommandGroup(replacing: .help) {
+                Button("SubieScope on GitHub") { NSWorkspace.shared.open(Links.repository) }
+                Button("Report a Problem…") { NSWorkspace.shared.open(Links.issues) }
+                Divider()
+                Button("Buy Me a Coffee ☕︎") { NSWorkspace.shared.open(About.coffeeURL) }
+            }
+            CommandGroup(replacing: .newItem) {
+                Button("Open Log…") { openLogPanel(model) }
+                    .keyboardShortcut("o", modifiers: [.command])
+            }
+            CommandMenu("Car") {
+                Button(model.connection.isConnected ? "Disconnect" : "Connect") {
+                    if model.connection.isConnected { model.disconnect() } else { Task { await model.connect() } }
+                }
+                .keyboardShortcut("k", modifiers: [.command])
+                Button(model.isRecording ? "Stop Recording" : "Start Recording") { model.toggleRecording() }
+                    .keyboardShortcut("r", modifiers: [.command])
+                    .disabled(!model.connection.isConnected)
+                Divider()
+                Button("Read Trouble Codes") { Task { await model.readTroubleCodes() } }
+                    .disabled(!model.connection.isConnected)
+                Button("Refresh Cable List") { model.refreshPorts() }
+                Button("Cable Setup…") { model.showCableSetup = true }
+            }
+            CommandGroup(after: .sidebar) {
+                ForEach(Array(AppSection.allCases.enumerated()), id: \.element) { index, section in
+                    Button(section.title) { model.section = section }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
+                }
+            }
+        }
+
+        Settings {
+            SettingsView()
+                .environment(model)
+        }
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // A bare executable (swift run) is not a real app bundle: make it behave like one.
+        if Bundle.main.bundleURL.pathExtension != "app" {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// CSV logs opened from Finder ("Open With > SubieScope") or dropped on the Dock icon.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first(where: { $0.pathExtension.lowercased() == "csv" }) else { return }
+        Task { @MainActor in
+            AppModel.shared.section = .logs
+            await AppModel.shared.openLog(url)
+        }
+    }
+}
