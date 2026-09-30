@@ -270,6 +270,46 @@ public final class ELM327 {
         return result
     }
 
+    // MARK: Raw K-line (experimental: Subaru SSM over a standard ELM327)
+
+    public struct RawKLineSetup: Sendable {
+        public var accepted: [String]
+        public var rejected: [String]
+        public init(accepted: [String], rejected: [String]) { self.accepted = accepted; self.rejected = rejected }
+        /// The two commands that decide it: 4800 baud and raw (unformatted) frames.
+        public var ok: Bool { accepted.contains("ATIB48") && accepted.contains("ATCAF0") }
+    }
+
+    /// Puts the adapter into raw K-line mode at 4800 baud with no OBD framing, which is what
+    /// Subaru SSM needs. Genuine ELM327 chips (v1.4+) support this; many clones do not, so the
+    /// returned setup lists what the adapter accepted. `ok` is false when SSM is not possible.
+    public func configureRawKLine() throws -> RawKLineSetup {
+        var accepted: [String] = []
+        var rejected: [String] = []
+        func at(_ cmd: String) {
+            let reply = ((try? send(cmd)) ?? []).joined(separator: " ").uppercased()
+            (reply.contains("OK") ? { accepted.append(cmd) } : { rejected.append(cmd) })()
+        }
+        _ = try send("ATZ", timeout: 4)
+        for cmd in ["ATE0", "ATL0", "ATS0"] { at(cmd) }
+        at("ATSP3")    // ISO 9141-2 (K-line)
+        at("ATIB48")   // ISO baud 4800: the Subaru SSM rate, and the capability clones usually lack
+        at("ATCAF0")   // automatic formatting off: we supply and receive whole frames, checksum included
+        at("ATH1")     // keep the headers in the reply so we see the full SSM frame
+        at("ATBI")     // begin the protocol without the normal init handshake (SSM has none)
+        _ = try? send("ATST64")   // per-request timeout ~400 ms
+        aggressiveTiming = false
+        return RawKLineSetup(accepted: accepted, rejected: rejected)
+    }
+
+    /// Sends one raw frame (as hex) and returns the bytes that came back. Assumes raw K-line mode.
+    public func exchangeRawKLine(_ frame: [UInt8], timeout: TimeInterval = 1.0) throws -> [UInt8] {
+        let hex = frame.map { String(format: "%02X", $0) }.joined()
+        let lines = try send(hex, timeout: timeout)
+        try Self.throwIfError(lines)
+        return lines.flatMap { Self.hexBytes(of: $0) }
+    }
+
     public func readVIN() throws -> String? {
         let lines = try send("0902", timeout: 6)
         if lines.joined().uppercased().contains("NODATA") { return nil }

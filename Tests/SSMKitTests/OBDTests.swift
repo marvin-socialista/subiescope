@@ -334,3 +334,60 @@ final class FatalBox: @unchecked Sendable {
     func set() { lock.lock(); flag = true; lock.unlock() }
     var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
 }
+
+@Suite("Subaru SSM over an ELM327 adapter", .serialized)
+struct SSMOverELMTests {
+    /// A round of the raw exchange runs on whatever thread `run` uses; keep it simple and synchronous.
+    func makeELM(_ configure: (SimulatedELM) -> Void = { _ in }) -> (ELM327, SimulatedELM) {
+        let sim = SimulatedELM(latency: 0.001, searchDelay: 0.005)
+        sim.ssmResponder = SimulatedELM.demoSSMResponder()
+        configure(sim)
+        return (ELM327(channel: sim), sim)
+    }
+
+    @Test func aCapableAdapterReadsTheEcuIdentityOverSSM() throws {
+        let (elm, _) = makeELM()
+        let probe = SSMOverELM(elm: elm).probe()
+        #expect(probe.setup.ok)
+        #expect(probe.worked)
+        #expect(probe.identity?.ecuID == DemoECU.identity.ecuID)
+        #expect(probe.reason.contains("Success"))
+    }
+
+    @Test func aCloneChipIsReportedAsUnableWithoutBlamingTheCar() throws {
+        let (elm, _) = makeELM { $0.supportsRawKLine = false }
+        let probe = SSMOverELM(elm: elm).probe()
+        #expect(!probe.setup.ok)
+        #expect(!probe.worked)
+        #expect(probe.setup.rejected.contains("ATIB48"))
+        #expect(probe.reason.contains("can't do Subaru SSM"))
+        #expect(!probe.reason.lowercased().contains("ignition"))   // the adapter is at fault, not the car
+    }
+
+    @Test func aCapableAdapterOnACarThatIsSilentBlamesTheCarNotTheAdapter() throws {
+        let (elm, _) = makeELM { $0.ssmResponder = nil }   // adapter fine, car does not speak SSM / ignition off
+        let probe = SSMOverELM(elm: elm).probe()
+        #expect(probe.setup.ok)
+        #expect(!probe.worked)
+        #expect(probe.reason.contains("did not answer"))
+    }
+
+    @Test func fullExchangeReadsAddressesOverSSM() throws {
+        let (elm, _) = makeELM()
+        let ssm = SSMOverELM(elm: elm)
+        _ = ssm.probe()
+        let reply = try ssm.exchange(SSMPacket.readAddressesRequest([0x000008, 0x00000A]))
+        #expect(reply.command == SSMCommand.response(to: SSMCommand.readAddresses))
+        #expect(reply.payload.count == 2)
+    }
+
+    @Test func ourOwnEchoedRequestIsNotMistakenForTheReply() throws {
+        // A single-wire K-line adapter may echo our request first; the parser must skip it.
+        let request = try SSMPacket.initRequest().encoded()
+        let reply = try SSMPacket(destination: SSMDevice.tester.rawValue, source: SSMDevice.engine.rawValue,
+                                  data: [0xFF] + DemoECU.identity.initData).encoded()
+        let stream = request + reply   // echo, then the real answer
+        let frame = SSMOverELM.firstSSMFrame(in: stream, from: SSMDevice.engine.rawValue)
+        #expect(frame == reply)
+    }
+}

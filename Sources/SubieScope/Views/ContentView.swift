@@ -55,6 +55,9 @@ struct ContentView: View {
         .sheet(isPresented: $model.showWizard) {
             SetupWizardView().environment(model)
         }
+        .sheet(isPresented: $model.showSSMProbe) {
+            SSMProbeView().environment(model)
+        }
         .alert("SubieScope quit unexpectedly last time", isPresented: $model.showCrashPrompt) {
             Button("Send Report…") { DiagnosticReporter.send(model: model) }
             Button("Not Now", role: .cancel) {}

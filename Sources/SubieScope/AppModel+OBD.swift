@@ -246,6 +246,46 @@ extension AppModel {
         }
     }
 
+    // MARK: Experimental SSM over a standard adapter
+
+    /// Tries Subaru SSM over the selected OBD-II adapter. Opens its own connection in raw K-line
+    /// mode, so it never clashes with normal OBD polling. Shows the result in a sheet.
+    func probeSSMOverAdapter() {
+        guard mode == .obd, let id = selectedAdapterID, !ssmProbeRunning else { return }
+        disconnect()
+        ssmProbeResult = nil
+        ssmProbeRunning = true
+        showSSMProbe = true
+        log("Trying Subaru SSM over \(id == Self.demoOBDID ? "the demo adapter" : selectedAdapterLabel)")
+        Task { @MainActor in
+            var session: OBDSession?
+            do {
+                let channel: ELMChannel
+                if id == Self.demoOBDID {
+                    let sim = SimulatedELM()
+                    sim.ssmResponder = SimulatedELM.demoSSMResponder()
+                    channel = sim
+                } else {
+                    channel = try await BLEChannel.open(id: id)
+                }
+                let obd = OBDSession(channel: channel)
+                session = obd
+                obd.elm.traffic = { [weak self] direction, text in
+                    Task { @MainActor in self?.logOBDTraffic(direction, text) }
+                }
+                let result = try await obd.run { elm in SSMOverELM(elm: elm).probe() }
+                ssmProbeResult = result
+                log(result.worked ? "SSM over adapter works: ECU \(result.identity?.ecuID ?? "?")" : "SSM over adapter did not work: \(result.reason)")
+            } catch {
+                ssmProbeResult = SSMOverELM.ProbeResult(setup: .init(accepted: [], rejected: []), identity: nil,
+                                                        rawReply: [], reason: error.localizedDescription)
+                log("SSM probe failed: \(error.localizedDescription)")
+            }
+            session?.close()
+            ssmProbeRunning = false
+        }
+    }
+
     // MARK: Console
 
     func logOBDTraffic(_ direction: ELMTrafficDirection, _ text: String) {

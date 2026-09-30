@@ -45,9 +45,15 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
     /// The car does not answer the second list of supported values (PIDs 21 and up).
     public var failsSecondSupportRange = false
 
+    /// Whether this adapter's chip supports raw 4800 baud K-line (ATIB48/ATCAF0). Clones set this false.
+    public var supportsRawKLine = true
+    /// Answers raw SSM frames when the adapter is in raw K-line mode. nil means the car does not speak SSM.
+    public var ssmResponder: (@Sendable ([UInt8]) -> [UInt8]?)?
+
     private let lock = NSLock()
     private var _car: Car
     private var _ignitionOn = true
+    private var automaticFormatting = true
     private let start = Date()
     private var echo = true
     private var spaces = true
@@ -63,6 +69,27 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
 
     public func close() {
         lock.lock(); closed = true; lock.unlock()
+    }
+
+    /// An SSM responder backed by the demo STI: answers the init request with a real ECU identity
+    /// and answers address reads with plausible bytes, so raw SSM over the demo adapter behaves
+    /// like a car up to about 2014. Assign it to `ssmResponder`.
+    public static func demoSSMResponder(identity: ECUIdentity = DemoECU.identity) -> @Sendable ([UInt8]) -> [UInt8]? {
+        return { requestBytes in
+            guard let request = try? SSMPacket.decode(requestBytes) else { return nil }
+            let reply: SSMPacket
+            switch request.command {
+            case SSMCommand.initECU:
+                reply = SSMPacket(destination: request.source, source: request.destination, data: [0xFF] + identity.initData)
+            case SSMCommand.readAddresses:
+                let count = max(0, (request.data.count - 2) / 3)
+                reply = SSMPacket(destination: request.source, source: request.destination,
+                                  data: [SSMCommand.response(to: SSMCommand.readAddresses)] + [UInt8](repeating: 0x20, count: count))
+            default:
+                return nil
+            }
+            return try? reply.encoded()
+        }
     }
 
     public func exchange(_ command: String, timeout: TimeInterval) throws -> String {
@@ -88,6 +115,12 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         }
         let request = ELM327.hexBytes(of: hex)
         guard !request.isEmpty else { return "?\r" }
+        if !automaticFormatting {
+            // Raw K-line mode: the bytes are a whole SSM frame, not an OBD PID request.
+            guard ignitionOn else { return "NO DATA\r" }
+            guard let responder = ssmResponder, let reply = responder(request) else { return "NO DATA\r" }
+            return line(reply) + "\r"
+        }
         return obd(request)
     }
 
@@ -102,6 +135,9 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         case "S1": spaces = true; return "OK\r"
         case "DP": return "AUTO, " + (car.usesCAN ? "ISO 15765-4 (CAN 11/500)" : "ISO 9141-2") + "\r"
         case "RV": return "12.6V\r"
+        case "CAF0": if !supportsRawKLine { return "?\r" }; automaticFormatting = false; return "OK\r"
+        case "CAF1": automaticFormatting = true; return "OK\r"
+        case "IB48": return supportsRawKLine ? "OK\r" : "?\r"
         default: return "OK\r"
         }
     }

@@ -105,6 +105,10 @@ final class AppModel {
     var obdSession: OBDSession?
     /// Something worth knowing about the car's answers (values it does not report), shown on the dashboard.
     var obdNotice: String?
+    /// Experimental "Subaru SSM over this adapter" probe.
+    var ssmProbeRunning = false
+    var ssmProbeResult: SSMOverELM.ProbeResult?
+    var showSSMProbe = false
     @ObservationIgnored var simulatedELM: SimulatedELM?
     @ObservationIgnored let bleScanner = BLEScanner()
     /// Set while a whole selection is swapped (a mode change), so half of it is never saved.

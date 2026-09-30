@@ -46,6 +46,10 @@ struct SubieScopeApp: App {
                 Divider()
                 Button("Setup Wizard…") { model.showWizard = true }
                     .disabled(model.connection == .connecting)
+                if model.mode == .obd {
+                    Button("Try Subaru SSM over Adapter…") { model.probeSSMOverAdapter() }
+                        .disabled(model.selectedAdapterID == nil || model.ssmProbeRunning || model.connection == .connecting)
+                }
                 Button("Connection Type…") { model.showModeChooser = true }
                     .disabled(model.connection.isConnected || model.connection == .connecting)
                 if model.mode == .obd {
