@@ -45,6 +45,12 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
     /// The car does not answer the second list of supported values (PIDs 21 and up).
     public var failsSecondSupportRange = false
 
+    /// Mode 22 values: what the ECU at a header (e.g. "7A2") answers for an identifier. nil means silence.
+    public var extendedResponder: (@Sendable (_ header: String, _ did: UInt16) -> [UInt8]?)?
+    /// Identifiers answered with "not supported" (7F 22 31): the ECU speaks Mode 22 but lacks the value.
+    public var extendedNegativeDIDs: Set<UInt16> = []
+    private var currentHeader = "7DF"
+
     private let lock = NSLock()
     private var _car: Car
     private var _ignitionOn = true
@@ -63,6 +69,27 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
 
     public func close() {
         lock.lock(); closed = true; lock.unlock()
+    }
+
+    /// Makes the demo car answer a few extended (Mode 22) values like a newer Subaru does: intake VVT (AVCS)
+    /// angles, primary boost control, the A/F sensor and the knocking signal, moving with the demo drive.
+    public func enableDemoExtended() {
+        let start = self.start
+        let world = self.world
+        extendedResponder = { header, did in
+            guard header == "7A2" else { return nil }
+            let w = world.sample(at: Date().timeIntervalSince(start))
+            let load = min(1, max(0, (w["load"] ?? 0) / 40))
+            let rpm = w["rpm"] ?? 800
+            switch did {
+            case 0x10B4: return [UInt8(max(0, min(255, 50 + load * 22 * min(1, rpm / 3000))))]         // intake VVT right
+            case 0x10B5: return [UInt8(max(0, min(255, 50 + load * 21 * min(1, rpm / 3000))))]         // intake VVT left
+            case 0x10AC: return [UInt8(max(0, min(255, (w["wgdc"] ?? 0) * 51 / 20)))]                   // primary boost control
+            case 0x10BE: return [UInt8(max(0, min(255, (w["lambda"] ?? 1) * 255 / 1.99)))]              // A/F sensor #1
+            case 0x11D0: return [UInt8(max(0, min(255, abs(w["fbkc"] ?? 0) * 8)))]                      // knocking signal
+            default: return nil
+            }
+        }
     }
 
     public func exchange(_ command: String, timeout: TimeInterval) throws -> String {
@@ -88,7 +115,18 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         }
         let request = ELM327.hexBytes(of: hex)
         guard !request.isEmpty else { return "?\r" }
+        if request.count >= 3 && request[0] == 0x22 { return extended(did: UInt16(request[1]) << 8 | UInt16(request[2])) }
         return obd(request)
+    }
+
+    private func extended(did: UInt16) -> String {
+        guard ignitionOn, let responder = extendedResponder else { return "NO DATA\r" }
+        if let data = responder(currentHeader, did) {
+            let message = [0x62, UInt8(did >> 8), UInt8(did & 0xFF)] + data
+            return frames(message)
+        }
+        if extendedNegativeDIDs.contains(did), currentHeader != "7DF" { return line([0x7F, 0x22, 0x31]) + "\r" }
+        return "NO DATA\r"
     }
 
     private func atCommand(_ command: String) -> String {
@@ -100,6 +138,9 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         case "E1": echo = true; return "OK\r"
         case "S0": spaces = false; return "OK\r"
         case "S1": spaces = true; return "OK\r"
+        case _ where command.hasPrefix("SH"):
+            currentHeader = String(command.dropFirst(2)); return "OK\r"
+        case "AR": currentHeader = "7DF"; return "OK\r"
         case "DP": return "AUTO, " + (car.usesCAN ? "ISO 15765-4 (CAN 11/500)" : "ISO 9141-2") + "\r"
         case "RV": return "12.6V\r"
         default: return "OK\r"

@@ -26,6 +26,9 @@ public final class OBDSession: @unchecked Sendable {
     private var timeoutStreak = 0
     private var cycle = 0
     private var lastReplies: [UInt8: [UInt8]] = [:]
+    private var lastExtended: [String: [UInt8]] = [:]
+    private var extendedMisses: [String: Int] = [:]
+    private var skippedExtended: Set<String> = []
     private var missCounts: [UInt8: Int] = [:]
     private var statsStart = Date()
     private var statsSamples = 0
@@ -93,12 +96,15 @@ public final class OBDSession: @unchecked Sendable {
             timeoutStreak = 0
             cycle = 0
             lastReplies = [:]
+            lastExtended = [:]
+            extendedMisses = [:]
+            skippedExtended = []
             missCounts = [:]
             skippedPIDs = []
             statsStart = Date()
             statsSamples = 0
             let newPlan = OBDPlan(items: items, allParameters: allParameters, conversionFor: conversionFor)
-            guard !newPlan.pids.isEmpty else {
+            guard !newPlan.pids.isEmpty || !newPlan.extended.isEmpty else {
                 plan = nil
                 return
             }
@@ -125,15 +131,24 @@ public final class OBDSession: @unchecked Sendable {
         let fast = active.filter { !OBDParameters.slowPIDs.contains($0) }
         let due = fast.isEmpty || cycle % 8 == 1 ? active : fast
         do {
-            guard !due.isEmpty else { throw OBDError.noData }
-            let replies = try elm.readPIDs(due)
-            timeoutStreak = 0
-            guard !replies.isEmpty else { throw OBDError.noData }
-            lastReplies.merge(replies) { _, new in new }
-            noteMisses(due: due, replies: replies)
+            var gotSomething = false
+            if !due.isEmpty {
+                let replies = try elm.readPIDs(due)
+                timeoutStreak = 0
+                if !replies.isEmpty {
+                    gotSomething = true
+                    lastReplies.merge(replies) { _, new in new }
+                    noteMisses(due: due, replies: replies)
+                }
+            }
+            // Extended (Mode 22) values need a header change per ECU, so they are read every third round.
+            if !plan.extended.isEmpty && (due.isEmpty || cycle % 3 == 0) {
+                gotSomething = try readExtended(plan) || gotSomething
+            }
+            guard gotSomething || !lastExtended.isEmpty else { throw OBDError.noData }
             consecutiveErrors = 0
             statsSamples += 1
-            onSample(Sample(time: started, values: plan.evaluate(lastReplies), roundTrip: Date().timeIntervalSince(started)))
+            onSample(Sample(time: started, values: plan.evaluate(lastReplies, extended: lastExtended), roundTrip: Date().timeIntervalSince(started)))
             logStatsIfDue()
         } catch {
             consecutiveErrors += 1
@@ -152,6 +167,62 @@ public final class OBDSession: @unchecked Sendable {
             Thread.sleep(forTimeInterval: 0.3)
         }
         queue.async { self.poll(generation: generation, onSample: onSample, onError: onError) }
+    }
+
+    /// Reads the extended values, one ECU at a time. A value that stays silent three times is dropped.
+    private func readExtended(_ plan: OBDPlan) throws -> Bool {
+        guard elm.supportsExtended else { return false }
+        var any = false
+        let wanted = plan.extended.filter { !skippedExtended.contains($0.id) }
+        for (key, group) in Dictionary(grouping: wanted, by: { $0.header + ">" + $0.response }) {
+            let parts = key.split(separator: ">").map(String.init)
+            let answers = try elm.readDIDs(header: parts[0], response: parts[1], dids: group.map(\.didValue))
+            for pid in group {
+                if let data = answers[pid.didValue] {
+                    lastExtended[pid.id] = data
+                    extendedMisses[pid.id] = 0
+                    any = true
+                } else {
+                    extendedMisses[pid.id, default: 0] += 1
+                    if extendedMisses[pid.id]! >= 3 {
+                        skippedExtended.insert(pid.id)
+                        lastExtended[pid.id] = nil
+                        DiagnosticLog.shared.warning("obd", "Extended value not answered, skipping: \(pid.name) (\(pid.header) 22\(pid.did))")
+                    }
+                }
+            }
+        }
+        return any
+    }
+
+    /// Asks the car which extended (Mode 22) values it answers. Returns the IDs of those that did. Takes a
+    /// few seconds on a car that answers, and only a moment on one that does not speak Mode 22 at all.
+    public func discoverExtended(catalog: [ExtendedPID] = ExtendedParameters.catalog) async throws -> Set<String> {
+        try await run { elm in
+            guard elm.supportsExtended else { return [] }
+            var found: Set<String> = []
+            for (key, group) in Dictionary(grouping: catalog, by: { $0.header + ">" + $0.response }) {
+                let parts = key.split(separator: ">").map(String.init)
+                // Identification first: an ECU that answers even that speaks Mode 22. The rest is visited spread
+                // over the whole list, so a car that only answers a few scattered values is still noticed
+                // within the first requests before the search would give up on a silent ECU.
+                let dids = [UInt16(0xF190), 0xF187, 0xF194] + Self.spread(group.sorted { $0.didValue < $1.didValue }).map(\.didValue)
+                let answered = try elm.probeDIDs(header: parts[0], response: parts[1], dids: dids, giveUpAfter: 40)
+                for pid in group where answered[pid.didValue] != nil { found.insert(pid.id) }
+                DiagnosticLog.shared.info("obd", "Extended values on \(parts[0]): \(group.filter { answered[$0.didValue] != nil }.count) of \(group.count) answered")
+            }
+            return found
+        }
+    }
+
+    /// The same items in an order that jumps around (a stride that shares no factor with the count), so any
+    /// early stretch of the list samples the whole range.
+    static func spread<T>(_ items: [T]) -> [T] {
+        let n = items.count
+        guard n > 2 else { return items }
+        var stride = 13
+        while n % stride == 0 { stride += 2 }
+        return (0..<n).map { items[($0 * stride) % n] }
     }
 
     /// A value that stays silent for three rounds in a row is dropped from the rounds.
@@ -196,6 +267,9 @@ struct OBDPlan {
 
     var pids: [UInt8] = []
     var entries: [Entry] = []
+    /// Extended (Mode 22) values in the selection, each with the units it is shown in.
+    var extended: [ExtendedPID] = []
+    var extendedConversions: [String: (conversion: Conversion, expression: Expression?)] = [:]
     var calculated: [(item: PollItem, expression: Expression?, bindings: [String: (id: String, units: String?)])] = []
 
     init(items: [PollItem], allParameters: [String: ParameterDefinition],
@@ -207,6 +281,11 @@ struct OBDPlan {
                                  expression: try? Expression(conversion.expression), output: output))
         }
         for item in items where item.parameter.kind != .calculated {
+            if let pid = ExtendedParameters.byID[item.parameter.id] {
+                if extendedConversions[pid.id] == nil { extended.append(pid) }
+                extendedConversions[pid.id] = (item.conversion, try? Expression(item.conversion.expression))
+                continue
+            }
             add(item.parameter, item.conversion, output: true)
         }
         for item in items where item.parameter.kind == .calculated {
@@ -226,9 +305,13 @@ struct OBDPlan {
         }
     }
 
-    func evaluate(_ replies: [UInt8: [UInt8]]) -> [String: Double] {
+    func evaluate(_ replies: [UInt8: [UInt8]], extended extendedReplies: [String: [UInt8]] = [:]) -> [String: Double] {
         var values: [String: Double] = [:]
         var byUnits: [String: Double] = [:]
+        for pid in extended {
+            guard let data = extendedReplies[pid.id], let raw = pid.raw(from: data), let entry = extendedConversions[pid.id] else { continue }
+            values[pid.id] = entry.expression?.evaluate(x: raw) ?? raw
+        }
         for entry in entries {
             guard let data = replies[entry.pid.pid], let raw = entry.pid.raw(from: data) else { continue }
             let value = entry.expression?.evaluate(x: raw) ?? raw

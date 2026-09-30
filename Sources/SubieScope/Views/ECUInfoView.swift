@@ -14,7 +14,8 @@ struct ECUInfoView: View {
     }
 
     private var obdBody: some View {
-        Form {
+        @Bindable var model = model
+        return Form {
             Section("Car") {
                 if let info = model.obdInfo {
                     row("VIN", info.vin ?? "Not reported by this car", mono: info.vin != nil)
@@ -30,6 +31,21 @@ struct ECUInfoView: View {
                 if model.connection.isConnected {
                     row("Sample rate", String(format: "%.1f samples/s", model.samplesPerSecond))
                     row("Last poll", String(format: "%.0f ms", model.lastRoundTrip * 1000))
+                }
+            }
+            Section("Extended values (experimental)") {
+                Toggle("Look for extended values (Mode 22)", isOn: $model.extendedValuesOn)
+                if let state = model.extendedState {
+                    HStack(spacing: 8) {
+                        if model.extendedSearching { ProgressView().controlSize(.small) }
+                        Text(state).font(.callout).foregroundStyle(.secondary)
+                    }
+                    if model.connection.isConnected && !model.extendedSearching {
+                        Button("Look Again") { Task { await model.discoverExtendedValues() } }
+                    }
+                } else {
+                    Text("Newer Subarus can report AVCS (VVT) angles, knock and boost control this way. Turn this on and connect: SubieScope checks which values your car answers and offers those in the Logger.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
             }
             Section("About OBD-II mode") {

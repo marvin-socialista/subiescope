@@ -270,6 +270,79 @@ public final class ELM327 {
         return result
     }
 
+    // MARK: Extended values (Mode 22)
+
+    public enum DIDStatus: Equatable, Sendable {
+        case positive([UInt8])
+        /// The ECU understands Mode 22 but not this identifier (7F 22 xx).
+        case negative(UInt8)
+        case silent
+    }
+
+    /// Mode 22 as used for the extended values needs an 11-bit CAN bus: the request header is set per ECU.
+    public var supportsExtended: Bool { protocolName.contains("CAN 11") }
+
+    /// Puts the adapter's request header and reply filter back to normal OBD-II (broadcast on 7DF, any reply).
+    public func restoreDefaultHeader() {
+        _ = try? send("ATSH7DF")
+        _ = try? send("ATAR")
+    }
+
+    func queryDID(_ did: UInt16) throws -> DIDStatus {
+        let request = String(format: "22%04X", did) + (usesReplyCount ? "1" : "")
+        let lines = try send(request, timeout: 1.5)
+        if let data = Self.didPayload(from: lines, did: did) { return .positive(data) }
+        for message in Self.messages(from: lines) where message.count >= 3 && message[0] == 0x7F && message[1] == 0x22 {
+            return .negative(message[2])
+        }
+        return .silent
+    }
+
+    /// Reads values from one ECU: requests go to `header`, answers are accepted from `response`. The adapter is
+    /// put back to normal afterwards. Values that do not answer are left out.
+    public func readDIDs(header: String, response: String, dids: [UInt16]) throws -> [UInt16: [UInt8]] {
+        guard !dids.isEmpty else { return [:] }
+        _ = try send("ATSH" + header)
+        _ = try send("ATCRA" + response)
+        defer { restoreDefaultHeader() }
+        var result: [UInt16: [UInt8]] = [:]
+        for did in dids {
+            if case .positive(let data) = try queryDID(did) { result[did] = data }
+        }
+        return result
+    }
+
+    /// Finds out which identifiers an ECU answers. Gives up early when the ECU does not speak Mode 22
+    /// at all: after `giveUpAfter` requests with no answer of any kind (not even "not supported").
+    public func probeDIDs(header: String, response: String, dids: [UInt16], giveUpAfter: Int = 8) throws -> [UInt16: [UInt8]] {
+        guard !dids.isEmpty else { return [:] }
+        _ = try send("ATSH" + header)
+        _ = try send("ATCRA" + response)
+        defer { restoreDefaultHeader() }
+        var found: [UInt16: [UInt8]] = [:]
+        var spoke = false
+        for (index, did) in dids.enumerated() {
+            switch try queryDID(did) {
+            case .positive(let data): found[did] = data; spoke = true
+            case .negative: spoke = true
+            case .silent: break
+            }
+            if !spoke && index + 1 >= giveUpAfter {
+                DiagnosticLog.shared.info("obd", "ECU \(header) does not answer Mode 22; skipping the rest")
+                break
+            }
+        }
+        return found
+    }
+
+    /// "62 10 B4 8A" -> the data bytes after the identifier.
+    static func didPayload(from lines: [String], did: UInt16) -> [UInt8]? {
+        for message in messages(from: lines) where message.count >= 3 && message[0] == 0x62 {
+            if message[1] == UInt8(did >> 8) && message[2] == UInt8(did & 0xFF) { return Array(message.dropFirst(3)) }
+        }
+        return nil
+    }
+
     public func readVIN() throws -> String? {
         let lines = try send("0902", timeout: 6)
         if lines.joined().uppercased().contains("NODATA") { return nil }

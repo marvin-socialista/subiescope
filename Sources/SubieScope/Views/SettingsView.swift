@@ -1,4 +1,5 @@
 import AppKit
+import SSMKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -20,7 +21,10 @@ struct SettingsView: View {
                     Text("Metric (°C, kPa, km/h)").tag(UnitSystem.metric)
                     Text("Imperial (°F, psi, mph)").tag(UnitSystem.imperial)
                 }
-                Text("You can still pick other units per parameter in the Logger.")
+                Picker("Pressure", selection: $model.pressureUnit) {
+                    ForEach(PressureUnit.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Boost and other pressures in kPa, bar or psi. You can still pick other units per parameter in the Logger.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -35,6 +39,13 @@ struct SettingsView: View {
                 }
 
                 Toggle("Connect automatically when SubieScope opens", isOn: $model.autoConnect)
+
+                if model.mode == .obd {
+                    Toggle("Extended values (experimental)", isOn: $model.extendedValuesOn)
+                    Text("Asks the car for manufacturer specific values such as AVCS (VVT) angles, knock and boost control, using OBD-II Mode 22. Only some cars answer, mostly newer Subarus, and the values come from community data, so check them against what you expect. Nothing is shown when your car does not answer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Toggle("Let the command line tool control the app (developer)", isOn: $model.remoteControlOn)
                 Text("Lets programs you run on this Mac send read-only requests to the connected adapter through subiescope-cli. Off by default. Nothing that clears codes or writes to the car gets through.")

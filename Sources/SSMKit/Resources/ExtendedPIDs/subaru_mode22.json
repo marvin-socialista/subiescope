@@ -1,0 +1,2503 @@
+{
+ "source": "OBDb Subaru signal sets (https://github.com/OBDb), engine ECU Mode 22 (UDS ReadDataByIdentifier) values",
+ "license": "CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/",
+ "note": "Community data. Each car answers only some of these; the meaning of a value can differ between models.",
+ "entries": [
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10A6",
+   "name": "Accelerator pedal position",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1135",
+   "name": "12V battery current",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -128,
+   "unit": "milliamps",
+   "min": -128,
+   "max": 127,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1136",
+   "name": "12V battery temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 215,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "12ED",
+   "name": "Mass air flow, average",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": 0,
+   "unit": "gramsPerSecond",
+   "min": null,
+   "max": 655.35,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "0005",
+   "name": "Coolant temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 215,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "0023",
+   "name": "Fuel rail pressure",
+   "bits": 16,
+   "signed": false,
+   "mul": 10,
+   "div": 1,
+   "add": 0,
+   "unit": "kilopascal",
+   "min": null,
+   "max": 655350,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "003C",
+   "name": "Exhaust gas temperature, catalyst inlet",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "celsius",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "003E",
+   "name": "Exhaust gas temperature at DPF inlet",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "celsius",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10A1",
+   "name": "Mass airflow sensor voltage",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 50,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 5.1,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10A4",
+   "name": "Fuel injector #2 pulse width",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 3.90625,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 65.28,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10A5",
+   "name": "Odometer",
+   "bits": 16,
+   "signed": false,
+   "mul": 2,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 131070,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10A7",
+   "name": "Fuel temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 215,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10AB",
+   "name": "Radiator fan control",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 200,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10AC",
+   "name": "Primary boost control",
+   "bits": 8,
+   "signed": false,
+   "mul": 20,
+   "div": 51,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10AE",
+   "name": "Canister purge control valve duty cycle",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10B1",
+   "name": "Exhaust gas recirculation steps",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10B2",
+   "name": "Alternator duty",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10B3",
+   "name": "Fuel pump duty",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10B4",
+   "name": "Intake VVT advance angle right",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10B5",
+   "name": "Intake VVT advance angle left",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10B6",
+   "name": "Oil control valve duty right",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10B7",
+   "name": "Oil control valve duty left",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10BE",
+   "name": "A/F sensor #1",
+   "bits": 8,
+   "signed": false,
+   "mul": 1.99,
+   "div": 255,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 1.99,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10D2",
+   "name": "Electric waste gate valve position sensor learning value at fully-closed position",
+   "bits": 8,
+   "signed": false,
+   "mul": 39.8,
+   "div": 255,
+   "add": -10,
+   "unit": "millimeters",
+   "min": -10,
+   "max": 29,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10D3",
+   "name": "Electric waste gate valve request position value",
+   "bits": 16,
+   "signed": false,
+   "mul": 40,
+   "div": 65535,
+   "add": -10,
+   "unit": "millimeters",
+   "min": -10,
+   "max": 30,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10D4",
+   "name": "Electric waste gate valve actual position value",
+   "bits": 16,
+   "signed": false,
+   "mul": 40,
+   "div": 65535,
+   "add": -10,
+   "unit": "millimeters",
+   "min": -10,
+   "max": 30,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10DE",
+   "name": "Throttle motor duty",
+   "bits": 8,
+   "signed": false,
+   "mul": 0.784,
+   "div": 1,
+   "add": -100,
+   "unit": "percent",
+   "min": -100,
+   "max": 99.92,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10E3",
+   "name": "Cruise speed, set",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometersPerHour",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10E5",
+   "name": "Odometer",
+   "bits": 16,
+   "signed": false,
+   "mul": 2,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 131070,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10E6",
+   "name": "Fuel tank air pressure",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": 0,
+   "unit": "unknown",
+   "min": null,
+   "max": 655,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10E8",
+   "name": "Oil supply value, duty right",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10E9",
+   "name": "Oil supply value, duty left",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10EE",
+   "name": "Exhaust OCV duty right",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "10EF",
+   "name": "Exhaust OCV duty left",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "110B",
+   "name": "Roughness monitor #1",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "110C",
+   "name": "Roughness monitor #2",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "110D",
+   "name": "Roughness monitor #3",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "110E",
+   "name": "Roughness monitor #4",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1116",
+   "name": "Final injection amount",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1118",
+   "name": "Target intake manifold pressure",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "kilopascal",
+   "min": null,
+   "max": 50,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "111B",
+   "name": "Exhaust gas recirculation target valve opening angle",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "111C",
+   "name": "Exhaust gas recirculation valve opening angle",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "111F",
+   "name": "Inlet air temperature, after air filter",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 215,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1121",
+   "name": "Target engine speed",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 4,
+   "add": 0,
+   "unit": "rpm",
+   "min": null,
+   "max": 16383.75,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "112A",
+   "name": "Mileage after injector learning",
+   "bits": 16,
+   "signed": false,
+   "mul": 5,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 327675,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "112B",
+   "name": "Mileage after injector replacement",
+   "bits": 16,
+   "signed": false,
+   "mul": 5,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 327675,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "112C",
+   "name": "Interior heater",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "112D",
+   "name": "Quantity correction cylinder #1",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": -1,
+   "unit": "milliseconds",
+   "min": -1,
+   "max": 1.54,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "112E",
+   "name": "Quantity correction cylinder #2",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": -1,
+   "unit": "milliseconds",
+   "min": -1,
+   "max": 1.54,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "112F",
+   "name": "Quantity correction cylinder #3",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": -1,
+   "unit": "milliseconds",
+   "min": -1,
+   "max": 1.54,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1130",
+   "name": "Quantity correction cylinder #4",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": -1,
+   "unit": "milliseconds",
+   "min": -1,
+   "max": 1.54,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1149",
+   "name": "Cumulative ash ratio",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "114A",
+   "name": "Pressure difference between DPF inlet and outlet",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "kilopascal",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "114B",
+   "name": "Estimated catalyst temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 5,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 1235,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "114C",
+   "name": "Estimated DPF temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 5,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 1235,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "114D",
+   "name": "Soot accumulation ratio",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "114E",
+   "name": "Oil dilution ratio",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1155",
+   "name": "Estimated distance to oil change",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 25500,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1156",
+   "name": "Running distance since last DPF regeneration",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1157",
+   "name": "Diesel particulate filter regeneration count",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1161",
+   "name": "Individual pump difference learning value",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -1000,
+   "unit": "milliamps",
+   "min": -1000,
+   "max": 64535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1162",
+   "name": "Final main injection period",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1000,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 65.535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "116A",
+   "name": "Distance since particulate filter warning",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1189",
+   "name": "Oil dilution amount",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 200,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 1.275,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "11A1",
+   "name": "Diesel particulate filter regeneration attempts",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "11D0",
+   "name": "Knocking signal",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "degrees",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "122F",
+   "name": "Clutch switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1230",
+   "name": "Stop light switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1231",
+   "name": "Cruise control set/coast switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1232",
+   "name": "Cruise control resume/accelerate switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1233",
+   "name": "Brake switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1234",
+   "name": "Cruise control main toggle switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "124A",
+   "name": "Cruise control cancel switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "124C",
+   "name": "Oil level switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "124F",
+   "name": "Glow relay switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1251",
+   "name": "Sub fuel pump relay switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1254",
+   "name": "Injector learning switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "125B",
+   "name": "Diesel particulate filter active regeneration switch",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "129C",
+   "name": "Engine starting time",
+   "bits": 16,
+   "signed": false,
+   "mul": 10,
+   "div": 1,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 655350,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1314",
+   "name": "Cylinder monitor #1",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 4,
+   "add": 0,
+   "unit": "rpm",
+   "min": null,
+   "max": 16383.75,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1315",
+   "name": "Cylinder monitor #2",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 4,
+   "add": 0,
+   "unit": "rpm",
+   "min": null,
+   "max": 16383.75,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1316",
+   "name": "Cylinder monitor #3",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 4,
+   "add": 0,
+   "unit": "rpm",
+   "min": null,
+   "max": 16383.75,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1317",
+   "name": "Cylinder monitor #4",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 4,
+   "add": 0,
+   "unit": "rpm",
+   "min": null,
+   "max": 16383.75,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1321",
+   "name": "Battery terminal voltage",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1000,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 65.535,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1322",
+   "name": "Battery charge/discharge current",
+   "bits": 32,
+   "signed": false,
+   "mul": 10,
+   "div": 10000,
+   "add": -2000,
+   "unit": "amps",
+   "min": -2000,
+   "max": 4292967,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1323",
+   "name": "Estimated battery temperature",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 2,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 32727.5,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "1324",
+   "name": "Remaining battery capacity",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 10,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7A2",
+   "response": "7AA",
+   "did": "307A",
+   "name": "Inlet air temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 1.8,
+   "div": 1,
+   "add": -40,
+   "unit": "fahrenheit",
+   "min": -30,
+   "max": 300,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "0005",
+   "name": "Coolant temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 215,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "002F",
+   "name": "Fuel level",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 255,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback",
+    "WRX"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "101E",
+   "name": "Trip counter",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10A3",
+   "name": "Fuel injection 1 pulse width",
+   "bits": 8,
+   "signed": false,
+   "mul": 32,
+   "div": 125,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 65.28,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10AC",
+   "name": "Primary boost control",
+   "bits": 8,
+   "signed": false,
+   "mul": 20,
+   "div": 51,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10AF",
+   "name": "Tumble generator valve position sensor right",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 50,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 5.1,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10B0",
+   "name": "Tumble generator valve position sensor left",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 50,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 5.1,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10E5",
+   "name": "Odometer",
+   "bits": 16,
+   "signed": false,
+   "mul": 2,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 131070,
+   "models": [
+    "Crosstrek",
+    "Forester",
+    "Impreza",
+    "Outback",
+    "WRX"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10E7",
+   "name": "Engine oil temperature",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 215,
+   "models": [
+    "Forester",
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10EC",
+   "name": "Exhaust VVT retard angle right",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "10ED",
+   "name": "Exhaust VVT retard angle left",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1149",
+   "name": "Cumulative ash ratio",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1155",
+   "name": "Estimated distance to oil change",
+   "bits": 8,
+   "signed": false,
+   "mul": 100,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 25500,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "116A",
+   "name": "Distance since particulate filter warning",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "kilometers",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "11BE",
+   "name": "Intake VVT cleaning self-recovery counter",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "11BF",
+   "name": "Exhaust VVT cleaning self-recovery counter",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "scalar",
+   "min": null,
+   "max": 255,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1275",
+   "name": "Throttle motor voltage",
+   "bits": 8,
+   "signed": false,
+   "mul": 2,
+   "div": 25,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 20.4,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1276",
+   "name": "Sub throttle sensor",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 50,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 5.1,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1277",
+   "name": "Main throttle sensor",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 50,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 5.1,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1278",
+   "name": "Sub accelerator sensor",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 50,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 5.1,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1279",
+   "name": "Main accelerator sensor",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 50,
+   "add": 0,
+   "unit": "volts",
+   "min": null,
+   "max": 5.1,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1289",
+   "name": "Idle mass air flow",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": 0,
+   "unit": "gramsPerSecond",
+   "min": null,
+   "max": 655,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "128A",
+   "name": "Idle mass air flow feedback correction",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": -300,
+   "unit": "gramsPerSecond",
+   "min": -300,
+   "max": 355,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "128B",
+   "name": "Idle speed control learning value",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": -300,
+   "unit": "gramsPerSecond",
+   "min": -300,
+   "max": 355,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "128C",
+   "name": "Idle A/C load correction",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": 0,
+   "unit": "gramsPerSecond",
+   "min": null,
+   "max": 2.55,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "128D",
+   "name": "Electric load feedback value",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": 0,
+   "unit": "gramsPerSecond",
+   "min": null,
+   "max": 2.55,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "128E",
+   "name": "Idle dirty throttle correction",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 100,
+   "add": -300,
+   "unit": "gramsPerSecond",
+   "min": -300,
+   "max": 355,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "128F",
+   "name": "Intake VVT advance, target angle right",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1290",
+   "name": "Intake VVT advance, target angle left",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1291",
+   "name": "Exhaust VVT retard, target angle right",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1292",
+   "name": "Exhaust VVT retard, target angle left",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": -50,
+   "unit": "degrees",
+   "min": -50,
+   "max": 205,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1295",
+   "name": "Purge density learn value",
+   "bits": 8,
+   "signed": false,
+   "mul": 332,
+   "div": 425,
+   "add": -100,
+   "unit": "percent",
+   "min": -100,
+   "max": 99.1999,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1298",
+   "name": "Transmission turbine speed",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "rpm",
+   "min": null,
+   "max": 65535,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1299",
+   "name": "Transmission lock-up",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 1,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "12CE",
+   "name": "Ambient temperature for sensor signal",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 2,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 87.5,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "12D1",
+   "name": "Ambient temperature for control",
+   "bits": 8,
+   "signed": false,
+   "mul": 1,
+   "div": 2,
+   "add": -40,
+   "unit": "celsius",
+   "min": -40,
+   "max": 87.5,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1352",
+   "name": "Split ratio of fuel injection 1",
+   "bits": 8,
+   "signed": false,
+   "mul": 20,
+   "div": 51,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1353",
+   "name": "Split ratio of fuel injection 2",
+   "bits": 8,
+   "signed": false,
+   "mul": 20,
+   "div": 51,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1354",
+   "name": "Split ratio of fuel injection 3",
+   "bits": 8,
+   "signed": false,
+   "mul": 20,
+   "div": 51,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1355",
+   "name": "Split ratio of fuel injection 4",
+   "bits": 8,
+   "signed": false,
+   "mul": 20,
+   "div": 51,
+   "add": 0,
+   "unit": "percent",
+   "min": null,
+   "max": 100,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1357",
+   "name": "Direct fuel injection time 1",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 250,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 262.14,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1358",
+   "name": "Direct fuel injection time 2",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 250,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 262.14,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "1359",
+   "name": "Direct fuel injection time 3",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 250,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 262.14,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  },
+  {
+   "header": "7E0",
+   "response": "7E8",
+   "did": "135A",
+   "name": "Direct fuel injection time 4",
+   "bits": 16,
+   "signed": false,
+   "mul": 1,
+   "div": 250,
+   "add": 0,
+   "unit": "milliseconds",
+   "min": null,
+   "max": 262.14,
+   "models": [
+    "Impreza",
+    "Outback"
+   ]
+  }
+ ]
+}

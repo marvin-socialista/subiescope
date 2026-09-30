@@ -334,3 +334,191 @@ final class FatalBox: @unchecked Sendable {
     func set() { lock.lock(); flag = true; lock.unlock() }
     var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
 }
+
+@Suite("OBD-II extended values (Mode 22)", .serialized)
+struct ExtendedValueTests {
+    /// A newer Subaru: the engine ECU on 7A2 answers intake VVT (AVCS) left and right, and nothing else.
+    static let avcsResponder: @Sendable (String, UInt16) -> [UInt8]? = { header, did in
+        guard header == "7A2" else { return nil }
+        switch did {
+        case 0x10B4: return [0x3C]     // 60 - 50 = +10 degrees
+        case 0x10B5: return [0x37]     // 55 - 50 = +5 degrees
+        default: return nil
+        }
+    }
+
+    func makeSession(_ configure: (SimulatedELM) -> Void = { _ in }) -> (OBDSession, SimulatedELM) {
+        let sim = SimulatedELM(latency: 0.001, searchDelay: 0.005)
+        configure(sim)
+        return (OBDSession(channel: sim), sim)
+    }
+
+    @Test func theBundledCatalogLoadsWithAVCSAndKnock() throws {
+        let catalog = ExtendedParameters.catalog
+        #expect(catalog.count >= 100, "the OBDb data must be bundled")
+        #expect(Set(catalog.map(\.id)).count == catalog.count, "ids must be unique")
+        let vvt = try #require(ExtendedParameters.byID["X7A2_10B4"])
+        #expect(vvt.name.contains("Intake VVT advance angle right"))
+        #expect(vvt.response == "7AA")
+        #expect(ExtendedParameters.byID["X7A2_11D0"]?.name.contains("Knock") == true)
+        // Every formula must compile, and the definition must carry its units.
+        for pid in catalog {
+            for conversion in ExtendedParameters.definition(for: pid).conversions { _ = try Expression(conversion.expression) }
+        }
+    }
+
+    @Test func rawBytesBecomeValues() throws {
+        let vvt = try #require(ExtendedParameters.byID["X7A2_10B4"])
+        let conversion = ExtendedParameters.definition(for: vvt).conversions[0]
+        let expression = try Expression(conversion.expression)
+        #expect(expression.evaluate(x: try #require(vvt.raw(from: [0x3C]))) == 10)
+        #expect(expression.evaluate(x: try #require(vvt.raw(from: [0x00]))) == -50)
+        #expect(vvt.raw(from: []) == nil)
+        // A signed 16 bit value: 0xFFFE is -2.
+        let signed = ExtendedPID(header: "7E0", response: "7E8", did: "0001", name: "t", bits: 16, signed: true,
+                                 mul: 1, div: 1, add: 0, unit: "scalar", min: nil, max: nil, models: [])
+        #expect(signed.raw(from: [0xFF, 0xFE]) == -2)
+    }
+
+    @Test func discoveryFindsWhatTheCarAnswers() async throws {
+        // A realistic car answers a share of the known values, spread over the list, and not the identification DIDs.
+        let known = ExtendedParameters.catalog.filter { $0.header == "7A2" }
+        let answered = Set(known.enumerated().filter { $0.offset % 4 == 0 }.map(\.element.didValue))
+        #expect(answered.count > 10)
+        let (session, _) = makeSession {
+            $0.extendedResponder = { header, did in header == "7A2" && answered.contains(did) ? [0x10] : nil }
+        }
+        defer { session.close() }
+        _ = try await session.connect()
+        let found = try await session.discoverExtended()
+        #expect(found == Set(known.filter { answered.contains($0.didValue) }.map(\.id)))
+        // The adapter must be back to normal OBD-II afterwards.
+        let rpm = try await session.run { try $0.readPID(0x0C) }
+        #expect(rpm.count == 2)
+    }
+
+    @Test func aCarThatDoesNotSpeakMode22IsGivenUpOnQuickly() async throws {
+        // Like the 2008 STI: the ECU stays silent for everything.
+        let (session, _) = makeSession()
+        defer { session.close() }
+        _ = try await session.connect()
+        let requests = try await session.run { elm -> Int in
+            let before = elm.requestCount
+            _ = try elm.probeDIDs(header: "7A2", response: "7AA", dids: (0x0000...0x0100).map(UInt16.init))
+            return elm.requestCount - before
+        }
+        #expect(requests < 20, "it should stop after a few silent requests, used \(requests)")
+        let discovered = try await session.discoverExtended()
+        #expect(discovered.isEmpty)
+    }
+
+    @Test func aFewScatteredAnswersAreNotMissedByTheEarlyExit() async throws {
+        // Only two values answer, far apart in the list. The spread order must still reach one of them
+        // within the first requests, or the search would wrongly conclude the ECU is silent.
+        let known = ExtendedParameters.catalog.filter { $0.header == "7A2" }.sorted { $0.didValue < $1.didValue }
+        let two = Set([known[3].didValue, known[known.count - 5].didValue])
+        let (session, _) = makeSession {
+            $0.extendedResponder = { header, did in header == "7A2" && two.contains(did) ? [0x10] : nil }
+        }
+        defer { session.close() }
+        _ = try await session.connect()
+        let found = try await session.discoverExtended()
+        #expect(found.count == 2, "found \(found.count) of 2")
+    }
+
+    @Test func anEcuThatSaysNotSupportedIsKeptTalkingTo() async throws {
+        // 7F 22 31 means "I know Mode 22, not this value": more requests are worth it.
+        let (session, _) = makeSession {
+            $0.extendedNegativeDIDs = [0xF190, 0xF187, 0xF194]
+            $0.extendedResponder = Self.avcsResponder
+        }
+        defer { session.close() }
+        _ = try await session.connect()
+        let found = try await session.discoverExtended()
+        #expect(found.contains("X7A2_10B4"))
+    }
+
+    @Test func pollingReadsExtendedValuesNextToTheStandardOnes() async throws {
+        let (session, _) = makeSession { $0.extendedResponder = Self.avcsResponder }
+        defer { session.close() }
+        let info = try await session.connect()
+        let base = OBDParameters.parameters(supported: info.supportedPIDs)
+        let rpm = try #require(base.first { $0.id == "OBD0C" })
+        let right = ExtendedParameters.definition(for: try #require(ExtendedParameters.byID["X7A2_10B4"]))
+        let silent = ExtendedParameters.definition(for: try #require(ExtendedParameters.byID["X7A2_10B6"]))
+        let all = Dictionary((base + [right, silent]).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let box = SampleBox()
+        session.startPolling(items: [rpm, right, silent].map { PollItem(parameter: $0, conversion: $0.conversions[0]) },
+                             allParameters: all, onSample: { box.add($0) }, onError: { e, _ in box.fail(e) })
+        try await Task.sleep(for: .seconds(2))
+        session.stopPolling()
+        #expect(box.allErrors.isEmpty, "\(box.allErrors)")
+        let last = try #require(box.all.last)
+        #expect(last.values["OBD0C"] != nil)
+        #expect(last.values["X7A2_10B4"] == 10)
+        #expect(last.values["X7A2_10B6"] == nil, "a value the car does not answer must not show up")
+        #expect(box.all.count > 5, "standard values must keep flowing while extended ones are read")
+        // Header restored: a plain request still works.
+        let speed = try await session.run { try $0.readPID(0x0D) }
+        #expect(speed.count == 1)
+    }
+}
+
+@Suite("Pressure units")
+struct PressureUnitTests {
+    func value(_ pid: UInt8, _ data: [UInt8], _ units: String) throws -> Double {
+        let p = try #require(OBDParameters.byPID[pid])
+        let conversion = try #require(p.conversions.first { $0.units == units })
+        return try Expression(conversion.expression).evaluate(x: try #require(p.raw(from: data)))
+    }
+
+    @Test func manifoldPressureInBar() throws {
+        #expect(try value(0x0B, [200], "kPa") == 200)
+        #expect(try value(0x0B, [200], "bar") == 2.0)
+        #expect(abs(try value(0x0B, [101], "bar") - 1.01) < 0.0001)
+        #expect(abs(try value(0x0B, [200], "psi") - 29.0076) < 0.001)
+    }
+
+    @Test func fuelPressureAndBarometerInBar() throws {
+        #expect(abs(try value(0x0A, [100], "bar") - 3.0) < 0.0001)          // 300 kPa
+        #expect(abs(try value(0x23, [0x00, 0x64], "bar") - 10.0) < 0.0001)  // 1000 kPa (rail)
+        #expect(abs(try value(0x33, [101], "bar") - 1.01) < 0.0001)
+    }
+
+    @Test func boostGaugeInBar() throws {
+        let boost = OBDParameters.boostDefinition
+        let bar = try #require(boost.conversions.first { $0.units == "bar relative" })
+        // Manifold 200 kPa, outside 101.3 kPa: 0.987 bar of boost. A vacuum reads negative.
+        let expression = try Expression(bar.expression)
+        let variable = try #require(expression.variables.first)
+        #expect(abs(expression.evaluate([variable: 200]) - 0.987) < 0.0001)
+        #expect(expression.evaluate([variable: 30]) < 0)
+    }
+
+    @Test func extendedPressuresGetBarToo() throws {
+        let pressure = try #require(ExtendedParameters.catalog.first { $0.unit == "kilopascal" })
+        let units = ExtendedParameters.definition(for: pressure).conversions.map(\.units)
+        #expect(units == ["kPa", "bar", "psi"])
+    }
+
+    @Test func theChosenUnitWinsOnlyWherePressureApplies() throws {
+        let map = OBDParameters.definition(for: try #require(OBDParameters.byPID[0x0B]))
+        let temperature = OBDParameters.definition(for: try #require(OBDParameters.byPID[0x05]))
+        #expect(PressureUnit.bar.choose(from: map.conversions)?.units == "bar")
+        #expect(PressureUnit.psi.choose(from: map.conversions)?.units == "psi")
+        #expect(PressureUnit.kilopascal.choose(from: map.conversions)?.units == "kPa")
+        #expect(PressureUnit.automatic.choose(from: map.conversions) == nil)
+        // A temperature has no pressure unit, so the normal choice still applies.
+        #expect(PressureUnit.bar.choose(from: temperature.conversions) == nil)
+        // RomRaider names: "psi relative" and "bar" are found by their prefix.
+        let romraider = [Conversion(units: "psi relative", expression: "x"), Conversion(units: "kPa relative", expression: "x"),
+                         Conversion(units: "bar relative", expression: "x")]
+        #expect(PressureUnit.bar.choose(from: romraider)?.units == "bar relative")
+    }
+
+    @Test func everyPressureListsBarAfterKilopascal() {
+        for pid in OBDParameters.catalog where pid.conversions.contains(where: { $0.units == "kPa" }) {
+            #expect(pid.conversions.contains { $0.units == "bar" }, "\(pid.name) should offer bar")
+        }
+    }
+}

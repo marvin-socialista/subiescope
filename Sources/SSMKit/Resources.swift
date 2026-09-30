@@ -38,6 +38,10 @@ enum SSMResources {
         bundle?.url(forResource: name, withExtension: "json", subdirectory: "TroubleCodes")
     }
 
+    static func url(forExtendedPIDs name: String) -> URL? {
+        bundle?.url(forResource: name, withExtension: "json", subdirectory: "ExtendedPIDs")
+    }
+
     static func definitionFiles() -> [URL] {
         guard let dir = bundle?.resourceURL?.appendingPathComponent("Definitions") else { return [] }
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []

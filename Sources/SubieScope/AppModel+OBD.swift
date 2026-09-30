@@ -124,6 +124,7 @@ extension AppModel {
             let channel: ELMChannel
             if isDemo {
                 let simulator = SimulatedELM()
+                simulator.enableDemoExtended()
                 simulator.world.setFault(demoFault)
                 simulatedELM = simulator
                 channel = simulator
@@ -151,6 +152,7 @@ extension AppModel {
             resetLive()
             startPolling()
             await readOBDTroubleCodes()
+            if extendedValuesOn { Task { await discoverExtendedValues() } }
             if let recipeID = UserDefaults.standard.string(forKey: "startRecipe"), let recipe = RecipeCatalog.recipe(id: recipeID), recipeRun == nil {
                 section = .recipes
                 startRecipe(recipe)
@@ -174,7 +176,32 @@ extension AppModel {
         obdNotice = "This car does not answer right now: \(names.joined(separator: ", ")). Those values are skipped so the rest stays fast."
     }
 
+    /// Asks the car which extended (Mode 22) values it answers and offers those.
+    func discoverExtendedValues() async {
+        guard let session = obdSession, connection.isConnected, !extendedSearching else { return }
+        guard obdInfo != nil else { return }
+        extendedSearching = true
+        extendedState = "Looking for extended values…"
+        defer { extendedSearching = false }
+        do {
+            let found = try await session.discoverExtended()
+            extendedIDs = found
+            applyOBDParameters()
+            if found.isEmpty {
+                extendedState = "This car does not answer any extended values. That is normal for most cars, and for Subarus before about 2015."
+            } else {
+                extendedState = "Found \(found.count) extended value\(found.count == 1 ? "" : "s"). Add them in the Logger."
+            }
+            log(extendedState ?? "")
+        } catch {
+            extendedState = "Could not look for extended values: \(error.localizedDescription)"
+            log(extendedState ?? "")
+        }
+    }
+
     func closeOBD() {
+        extendedIDs = []
+        extendedState = nil
         obdNotice = nil
         obdSession?.stopPolling()
         obdSession?.close()
@@ -184,7 +211,9 @@ extension AppModel {
     }
 
     func applyOBDParameters() {
-        let list = obdInfo.map { OBDParameters.parameters(supported: $0.supportedPIDs) } ?? OBDParameters.allParameters
+        var list = obdInfo.map { OBDParameters.parameters(supported: $0.supportedPIDs) } ?? OBDParameters.allParameters
+        // Extended values only appear once the car has shown it answers them.
+        if extendedValuesOn { list += ExtendedParameters.definitions(for: extendedIDs) }
         parameters = list
         parametersByID = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         codeDefinitions = []
@@ -198,9 +227,10 @@ extension AppModel {
         if isRecording { rotateRecordingIfColumnsChangedForOBD(items) }
         let choice = unitChoice
         let system = unitSystem
+        let pressure = pressureUnit
         session.startPolling(items: items, allParameters: parametersByID, conversionFor: { p in
             if let units = choice[p.id], let c = p.conversions.first(where: { $0.units == units }) { return c }
-            return AppModel.preferredConversion(p.conversions, system: system)
+            return AppModel.preferredConversion(p.conversions, system: system, pressure: pressure)
         }, onSample: { [weak self] sample in
             Task { @MainActor in self?.ingest(sample) }
         }, onError: { [weak self] error, fatal in

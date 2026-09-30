@@ -108,6 +108,18 @@ final class AppModel {
     /// Command line remote control (developer): the control socket, and whether raw requests paused live polling.
     @ObservationIgnored var remoteServer: RemoteServer?
     var remoteHold = false
+    /// Experimental: Mode 22 extended values (AVCS, knock and more) on cars that answer them.
+    var extendedValuesOn: Bool = UserDefaults.standard.bool(forKey: "extendedValues") {
+        didSet {
+            UserDefaults.standard.set(extendedValuesOn, forKey: "extendedValues")
+            applyOBDParameters()
+            if extendedValuesOn && connection.isConnected && mode == .obd { Task { await discoverExtendedValues() } }
+        }
+    }
+    /// IDs of the extended values this car answered, and a sentence about how the search went.
+    var extendedIDs: Set<String> = []
+    var extendedState: String?
+    var extendedSearching = false
     /// Names of adapters seen while scanning, by identifier.
     var rememberedAdapterNames: [String: String] = [:]
     var remoteControlOn: Bool = UserDefaults.standard.bool(forKey: "remoteControl") {
@@ -139,6 +151,10 @@ final class AppModel {
             guard !suppressPersist, let data = try? JSONEncoder().encode(tileConfigs) else { return }
             UserDefaults.standard.set(data, forKey: "tileConfigs" + mode.keySuffix)
         }
+    }
+    /// Pressures in kPa, bar or psi whatever the units setting says.
+    var pressureUnit: PressureUnit = PressureUnit(rawValue: UserDefaults.standard.string(forKey: "pressureUnit") ?? "") ?? .automatic {
+        didSet { UserDefaults.standard.set(pressureUnit.rawValue, forKey: "pressureUnit"); selectionChanged() }
     }
     var unitSystem: UnitSystem = .metric {
         didSet { UserDefaults.standard.set(unitSystem.rawValue, forKey: "unitSystem"); selectionChanged() }
@@ -443,12 +459,14 @@ final class AppModel {
         if let chosen = unitChoice[parameter.id], let c = parameter.conversions.first(where: { $0.units == chosen }) {
             return c
         }
-        return Self.preferredConversion(parameter.conversions, system: unitSystem)
+        return Self.preferredConversion(parameter.conversions, system: unitSystem, pressure: pressureUnit)
     }
 
     /// The metric definition file lists metric units first, so metric uses the
     /// file's default and imperial looks for an imperial unit by exact name.
-    static func preferredConversion(_ conversions: [Conversion], system: UnitSystem) -> Conversion? {
+    static func preferredConversion(_ conversions: [Conversion], system: UnitSystem, pressure: PressureUnit = .automatic) -> Conversion? {
+        // A chosen pressure unit wins for every parameter that is a pressure; other values follow the units setting.
+        if let chosen = pressure.choose(from: conversions) { return chosen }
         guard system == .imperial else { return conversions.first }
         let imperial: Set<String> = ["f", "°f", "psi", "psi relative", "psi absolute", "psi relative sea level", "mph",
                                      "miles", "lb/min", "lbs/min", "inhg", "ft-lb", "lbf-ft", "gal/hr", "mpg"]
@@ -599,9 +617,10 @@ final class AppModel {
         if isRecording { rotateRecordingIfColumnsChanged(items) }
         let choice = unitChoice
         let system = unitSystem
+        let pressure = pressureUnit
         session.startPolling(items: items, allParameters: parametersByID, conversionFor: { p in
             if let units = choice[p.id], let c = p.conversions.first(where: { $0.units == units }) { return c }
-            return AppModel.preferredConversion(p.conversions, system: system)
+            return AppModel.preferredConversion(p.conversions, system: system, pressure: pressure)
         }, onSample: { [weak self] sample in
             Task { @MainActor in self?.ingest(sample) }
         }, onError: { [weak self] error, fatal in

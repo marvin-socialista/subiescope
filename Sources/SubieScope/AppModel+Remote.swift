@@ -14,6 +14,7 @@ extension AppModel {
         "                         AT commands too (ATSH7A2). Read-only services only.",
         "  release                put the adapter back to normal (header, filters) and resume live polling",
         "  values                 the latest live values",
+        "  pick <name>            add a value to the dashboard and the log by (part of) its name",
         "  codes                  read trouble codes",
     ]
 
@@ -84,6 +85,13 @@ extension AppModel {
             return parameters.compactMap { p in
                 latest[p.id].map { "\(p.displayName): \($0)" + (conversion(for: p).map { " \($0.displayUnits)" } ?? "") }
             }
+        case "pick":
+            guard let match = parameters.first(where: { $0.displayName.lowercased().contains(argument.lowercased()) }) else {
+                return ["No value matching \"\(argument)\". Available: " + parameters.prefix(60).map(\.displayName).joined(separator: ", ")]
+            }
+            if !dashboardIDs.contains(match.id) { dashboardIDs.append(match.id) }
+            loggedIDs.insert(match.id)
+            return ["Added \(match.displayName) (\(match.id))."]
         case "codes":
             await readTroubleCodes()
             return ["Confirmed: \(currentCodes.map(\.code).joined(separator: " ").nonEmpty ?? "none")",
