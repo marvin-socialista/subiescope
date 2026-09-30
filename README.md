@@ -6,7 +6,7 @@
 
 <p align="center">
   Live data, logging, diagnostics and a virtual dyno for your Subaru, on your Mac.<br>
-  Plug in a cheap VAG KKL cable and see what your ECU sees.
+  Plug in a cheap VAG KKL cable, or a Bluetooth OBD-II adapter for newer cars, and see what your car sees.
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
 
 ![SubieScope dashboard](docs/screenshots/dashboard.png)
 
-SubieScope talks to the engine ECU over Subaru's SSM protocol, the same one the dealer tool uses. It stands on the shoulders of two great open-source projects: [FreeSSM](https://github.com/Comer352L/FreeSSM) (diagnostics) and [RomRaider](https://github.com/RomRaider/RomRaider) (logging and its huge parameter database). SubieScope brings both to the Mac as one native app.
+SubieScope talks to the engine ECU over Subaru's SSM protocol, the same one the dealer tool uses, or over standard OBD-II with a Bluetooth adapter for newer cars. It stands on the shoulders of two great open-source projects: [FreeSSM](https://github.com/Comer352L/FreeSSM) (diagnostics) and [RomRaider](https://github.com/RomRaider/RomRaider) (logging and its huge parameter database). SubieScope brings both to the Mac as one native app.
 
 > Not affiliated with or endorsed by Subaru Corporation. Use at your own risk; see [Safety](#safety).
 
@@ -44,17 +44,33 @@ SubieScope talks to the engine ECU over Subaru's SSM protocol, the same one the 
   </tr>
 </table>
 
+## Two ways to connect
+
+SubieScope has two connection types. The first-run wizard asks what car you have and recommends one, and you can switch any time in the sidebar or the Car menu.
+
+| | **Subaru SSM** (USB cable) | **OBD-II** (Bluetooth adapter, new) |
+|---|---|---|
+| Best for | Subarus up to about 2014 | Newer Subarus (about 2015 and up) and any other car since 2008 |
+| You need | A VAG KKL 409.1 USB cable with an FTDI chip, about €10 to 15 | An ELM327 adapter with Bluetooth 4.0 (BLE), such as the Vgate iCar Pro |
+| Data | Everything the ECU knows: knock, IAM, boost target, AVCS and hundreds more | The standard values: rpm, speed, temperatures, load, fuel trims, timing, boost, battery voltage, wideband A/F where available |
+| Trouble codes | Subaru codes, clear ECU memory | Confirmed and pending codes, clear codes, VIN |
+| Speed | Roughly 10 to 25 samples per second | Roughly 3 to 10 samples per second, depending on the adapter |
+| Troubleshooting tests and dyno | All of them | The tests that only need standard values |
+
+OBD-II mode is new and has been tested against a simulated adapter and car. Reports from real cars and adapters are very welcome.
+
 ## What you need
 
 - A Mac with **macOS 14 Sonoma or newer** (Apple silicon or Intel).
-- A **VAG KKL 409.1 USB cable with an FTDI FT232RL chip**, about €10–15 online. macOS already has the FTDI driver, so there's nothing to install.
+- For **Subaru SSM**: a **VAG KKL 409.1 USB cable with an FTDI FT232RL chip**, about €10–15 online. macOS already has the FTDI driver, so there's nothing to install.
   - Avoid cables with a CH340 chip: they're known to be unreliable with Subarus.
   - Cables with a switch: use the position that puts K-line on pin 7.
-- A Subaru that speaks SSM over K-line (see below).
+  - A Subaru that speaks SSM over K-line (see below).
+- For **OBD-II**: an ELM327 adapter with **Bluetooth 4.0 (BLE)**, such as the Vgate iCar Pro BLE 4.0. Bluetooth Classic and Wi-Fi adapters are not supported yet. The first time, macOS asks whether SubieScope may use Bluetooth.
 
 ## Supported cars
 
-SubieScope works with Subarus whose engine ECU speaks **SSM2 over K-line** (OBD pin 7). That covers most petrol Subarus from **1999 to about 2014**. Newer cars talk to the diagnostic port over **CAN only**, which a KKL cable can't do.
+In **Subaru SSM** mode, SubieScope works with Subarus whose engine ECU speaks **SSM2 over K-line** (OBD pin 7). That covers most petrol Subarus from **1999 to about 2014**. Newer cars talk to the diagnostic port over **CAN only**, which a KKL cable can't do: use **OBD-II** mode for those.
 
 | Model | Years | Status |
 |---|---|---|
@@ -64,7 +80,7 @@ SubieScope works with Subarus whose engine ECU speaks **SSM2 over K-line** (OBD 
 | Forester (SF, SG, SH) | 1999 to 2013 | Supported (SH: most models) |
 | Baja | 2003 to 2006 | Supported |
 | Tribeca (B9 Tribeca) | 2006 to 2014 | Supported |
-| WRX / STI (VA), Forester (SJ and newer), Levorg, XV/Crosstrek, BRZ | 2014 and newer | **Not supported**: CAN only (BRZ: Toyota ECU) |
+| WRX / STI (VA), Forester (SJ and newer), Levorg, XV/Crosstrek, BRZ | 2014 and newer | **Not with the cable** (CAN only, BRZ: Toyota ECU). Use OBD-II mode with a Bluetooth adapter |
 
 What your car supports depends on its ECU:
 
@@ -77,16 +93,16 @@ What your car supports depends on its ECU:
 
 1. Download `SubieScope.dmg` from the [latest release](https://github.com/marvin-socialista/subiescope/releases/latest).
 2. Open it and drag **SubieScope** to **Applications**. The app is signed and notarized by Apple, so it opens without warnings.
-3. On first launch SubieScope downloads RomRaider's parameter definitions once (about 2 MB), then opens **Cable Setup**.
+3. On first launch a short **setup wizard** asks what car you have, recommends the right connection, walks you through connecting and testing it, and can start a demo car if you have no hardware yet. (In SSM mode SubieScope also downloads RomRaider's parameter definitions once, about 2 MB.)
 
 ## First drive
 
-1. Plug the cable into your Mac and into the OBD port under the dashboard (driver's side).
+1. Plug the cable (or Bluetooth adapter) into the OBD port under the dashboard (driver's side). For the cable, also plug it into your Mac.
 2. Turn the ignition **ON**. The engine may be off or running.
-3. In Cable Setup press **Test Connection**, then **Connect**.
+3. In the wizard (or the sidebar) press **Test Connection**, then **Connect**.
 4. The dashboard comes alive. Press **⌘R** to record a log and **⌘R** again to stop.
 
-No cable yet? Pick **Demo ECU** in the cable menu to explore everything with a simulated car. In **Troubleshooting** you can even make the demo car develop faults (a dirty MAF, a vacuum leak, a dying catalyst…) to see how the tests catch them.
+No hardware yet? Pick the demo car in the cable or adapter menu to explore everything with a simulated car. In **Troubleshooting** you can even make the demo car develop faults (a dirty MAF, a vacuum leak, a dying catalyst…) to see how the tests catch them.
 
 ## Command line
 
@@ -100,6 +116,12 @@ The app bundle also contains `subiescope-cli`, which is handy at the car or for 
 ```
 
 Add `--demo` to any command to use the simulated car.
+
+## When something goes wrong
+
+SubieScope keeps a log of what it does in `~/Library/Logs/SubieScope/`. It leaves out your name (your home folder shows as `~`) and anything shaped like a VIN, and it never leaves your Mac by itself. If the app crashes, it says so the next time it starts, and starts without connecting automatically. **Help > Send Diagnostic Report…** bundles the log, your Mac model and any macOS crash reports into one file you can email to the developer or attach to an [issue](https://github.com/marvin-socialista/subiescope/issues). **Help > Save Diagnostic Report…** saves it instead.
+
+The OBD-II mode is built to keep going when a car or adapter is quirky: values a car does not answer are skipped, an adapter that can't read several values at once is read one at a time, and a car that won't list its supported values is probed directly.
 
 ## Safety
 

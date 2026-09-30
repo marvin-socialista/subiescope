@@ -1,3 +1,4 @@
+import SSMKit
 import SwiftUI
 
 @main
@@ -21,6 +22,9 @@ struct SubieScopeApp: App {
             CommandGroup(replacing: .help) {
                 Button("SubieScope on GitHub") { NSWorkspace.shared.open(Links.repository) }
                 Button("Report a Problem…") { NSWorkspace.shared.open(Links.issues) }
+                Button("Send Diagnostic Report…") { DiagnosticReporter.send(model: model) }
+                Button("Save Diagnostic Report…") { DiagnosticReporter.save(model: model) }
+                Button("Show Log in Finder") { DiagnosticReporter.revealLog() }
                 Divider()
                 Button("Buy Me a Coffee ☕︎") { NSWorkspace.shared.open(About.coffeeURL) }
             }
@@ -39,8 +43,17 @@ struct SubieScopeApp: App {
                 Divider()
                 Button("Read Trouble Codes") { Task { await model.readTroubleCodes() } }
                     .disabled(!model.connection.isConnected)
-                Button("Refresh Cable List") { model.refreshPorts() }
-                Button("Cable Setup…") { model.showCableSetup = true }
+                Divider()
+                Button("Setup Wizard…") { model.showWizard = true }
+                    .disabled(model.connection == .connecting)
+                Button("Connection Type…") { model.showModeChooser = true }
+                    .disabled(model.connection.isConnected || model.connection == .connecting)
+                if model.mode == .obd {
+                    Button("Refresh Adapter List") { model.restartBLEScan() }
+                } else {
+                    Button("Refresh Cable List") { model.refreshPorts() }
+                    Button("Cable Setup…") { model.showCableSetup = true }
+                }
             }
             CommandGroup(after: .sidebar) {
                 ForEach(Array(AppSection.allCases.enumerated()), id: \.element) { index, section in
@@ -67,6 +80,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        DiagnosticLog.shared.markCleanExit()
+    }
 
     /// CSV logs opened from Finder ("Open With > SubieScope") or dropped on the Dock icon.
     func application(_ application: NSApplication, open urls: [URL]) {

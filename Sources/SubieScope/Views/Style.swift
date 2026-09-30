@@ -6,6 +6,8 @@ enum Links {
     static let repository = URL(string: "https://github.com/marvin-socialista/subiescope")!
     static let issues = URL(string: "https://github.com/marvin-socialista/subiescope/issues")!
     static let releases = URL(string: "https://github.com/marvin-socialista/subiescope/releases")!
+    /// Where diagnostic reports are sent.
+    static let supportEmail = "mail@marvinvisser.nl"
 }
 
 extension Color {

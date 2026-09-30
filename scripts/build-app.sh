@@ -53,6 +53,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>SubieScope connects to a Bluetooth OBD-II adapter in your car to read live data and trouble codes.</string>
   <key>NSHumanReadableCopyright</key><string>GPL-3.0. Not affiliated with Subaru Corporation.</string>
   <key>CFBundleDocumentTypes</key>
   <array>
@@ -73,12 +74,12 @@ rm -rf build/SubieScope_SSMKit.bundle && cp -R "$BIN/SubieScope_SSMKit.bundle" b
 
 if [ "$SIGN_IDENTITY" = "-" ]; then
   codesign --force --sign - "$APP/Contents/MacOS/subiescope-cli" >/dev/null
-  codesign --force --sign - "$APP" >/dev/null
+  codesign --force --sign - --entitlements Assets/SubieScope.entitlements "$APP" >/dev/null
   codesign --force --sign - build/subiescope-cli >/dev/null
 else
   # Hardened runtime and secure timestamps are required for notarization. Inner code first.
   codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/subiescope-cli"
-  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+  codesign --force --options runtime --timestamp --entitlements Assets/SubieScope.entitlements --sign "$SIGN_IDENTITY" "$APP"
   codesign --verify --strict --verbose=2 "$APP"
 fi
 echo "Built $APP ($VERSION, build $BUILD_NUMBER) and build/subiescope-cli"

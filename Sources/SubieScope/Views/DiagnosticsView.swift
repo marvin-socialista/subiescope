@@ -17,16 +17,25 @@ struct DiagnosticsView: View {
                 if let message = model.clearState {
                     Label(message, systemImage: "info.circle").foregroundStyle(.secondary)
                 }
-                codeSection(title: "Current", subtitle: "Faults the ECU sees right now (temporary)", codes: model.currentCodes, tint: .red)
-                codeSection(title: "Memorized", subtitle: "Stored faults, kept until memory is cleared", codes: model.memorizedCodes, tint: .orange)
+                if model.mode == .obd {
+                    codeSection(title: "Confirmed", subtitle: "Faults the car has confirmed. The check engine light is on for these", codes: model.currentCodes, tint: .red)
+                    codeSection(title: "Pending", subtitle: "Seen once, not confirmed yet. They may go away by themselves", codes: model.memorizedCodes, tint: .orange)
+                } else {
+                    codeSection(title: "Current", subtitle: "Faults the ECU sees right now (temporary)", codes: model.currentCodes, tint: .red)
+                    codeSection(title: "Memorized", subtitle: "Stored faults, kept until memory is cleared", codes: model.memorizedCodes, tint: .orange)
+                }
             }
             .listStyle(.inset)
         }
-        .confirmationDialog("Clear the ECU memory?", isPresented: $confirmClear, titleVisibility: .visible) {
-            Button("Clear Memory", role: .destructive) { Task { await model.clearTroubleCodes() } }
+        .confirmationDialog(model.mode == .obd ? "Clear the trouble codes?" : "Clear the ECU memory?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button(model.mode == .obd ? "Clear Codes" : "Clear Memory", role: .destructive) { Task { await model.clearTroubleCodes() } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This erases all stored trouble codes and also resets what the ECU has learned: fuel trims (A/F learning), IAM and fine knock learning start over. The car may idle and drive slightly differently until it relearns.\n\nAfterwards: switch the ignition OFF, wait 10 seconds, switch it ON again.")
+            if model.mode == .obd {
+                Text("This erases the trouble codes and turns the check engine light off. It also resets what the car has learned (fuel trims) and its readiness for the emissions test, so a test may need a few days of driving before it passes. If a fault is still there, the code comes back.")
+            } else {
+                Text("This erases all stored trouble codes and also resets what the ECU has learned: fuel trims (A/F learning), IAM and fine knock learning start over. The car may idle and drive slightly differently until it relearns.\n\nAfterwards: switch the ignition OFF, wait 10 seconds, switch it ON again.")
+            }
         }
         .alert("Couldn't save the codes", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
             Button("OK") {}
@@ -64,7 +73,7 @@ struct DiagnosticsView: View {
             .fixedSize()
             .help("Copy or save every code with its causes and fixes, e.g. for your mechanic or a forum")
             .disabled(!isRead)
-            Button("Clear Memory…") { confirmClear = true }
+            Button(model.mode == .obd ? "Clear Codes…" : "Clear Memory…") { confirmClear = true }
                 .disabled(!model.connection.isConnected)
             Button("Read Codes") { Task { await model.readTroubleCodes() } }
                 .buttonStyle(.borderedProminent)
@@ -76,7 +85,7 @@ struct DiagnosticsView: View {
 
     private var stateText: String {
         switch model.codeReadState {
-        case .idle: return model.connection.isConnected ? "Press Read Codes to check the ECU" : "Connect to read trouble codes"
+        case .idle: return model.connection.isConnected ? "Press Read Codes to check the car" : "Connect to read trouble codes"
         case .reading: return "Reading…"
         case .read(let date):
             let total = model.currentCodes.count + model.memorizedCodes.count

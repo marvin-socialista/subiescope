@@ -6,6 +6,44 @@ struct ECUInfoView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        if model.mode == .obd {
+            obdBody
+        } else {
+            ssmBody
+        }
+    }
+
+    private var obdBody: some View {
+        Form {
+            Section("Car") {
+                if let info = model.obdInfo {
+                    row("VIN", info.vin ?? "Not reported by this car", mono: info.vin != nil)
+                    row("Standard values supported", "\(info.supportedPIDs.filter { $0 % 0x20 != 0 }.count)")
+                    if let volts = info.voltage { row("Battery voltage at the port", String(format: "%.1f V", volts)) }
+                } else {
+                    Text("Connect to read the car's identification.").foregroundStyle(.secondary)
+                }
+            }
+            Section("Adapter") {
+                row("Adapter", model.connection.isConnected ? (model.obdInfo?.adapter ?? "?") : model.selectedAdapterLabel)
+                row("Bus protocol", model.obdInfo?.protocolName.isEmpty == false ? model.obdInfo!.protocolName : "Found when connecting")
+                if model.connection.isConnected {
+                    row("Sample rate", String(format: "%.1f samples/s", model.samplesPerSecond))
+                    row("Last poll", String(format: "%.0f ms", model.lastRoundTrip * 1000))
+                }
+            }
+            Section("About OBD-II mode") {
+                Text("OBD-II mode reads the values every car reports by law. Subaru-only values such as knock correction, IAM and AVCS are only available with a KKL cable in Subaru SSM mode, on cars that support it.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button("Connection Type…") { model.showModeChooser = true }
+                    .disabled(model.connection.isConnected)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var ssmBody: some View {
         Form {
             Section("Control unit") {
                 if let id = model.identity {

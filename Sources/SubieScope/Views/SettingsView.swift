@@ -9,6 +9,13 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView {
             Form {
+                LabeledContent("Connection type") {
+                    HStack {
+                        Text("\(model.mode.title): \(model.mode.hardware)").foregroundStyle(.secondary)
+                        Button("Change…") { model.showModeChooser = true }
+                            .disabled(model.connection.isConnected)
+                    }
+                }
                 Picker("Units", selection: $model.unitSystem) {
                     Text("Metric (°C, kPa, km/h)").tag(UnitSystem.metric)
                     Text("Imperial (°F, psi, mph)").tag(UnitSystem.imperial)
@@ -29,10 +36,12 @@ struct SettingsView: View {
 
                 Toggle("Connect automatically when SubieScope opens", isOn: $model.autoConnect)
 
-                Toggle("Fast poll (continuous mode)", isOn: $model.fastPoll)
-                Text("The ECU keeps sending values without being asked each time, roughly doubling the sample rate. Turn it off if logging stalls.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if model.mode == .ssm {
+                    Toggle("Fast poll (continuous mode)", isOn: $model.fastPoll)
+                    Text("The ECU keeps sending values without being asked each time, roughly doubling the sample rate. Turn it off if logging stalls.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
             .tabItem { Label("General", systemImage: "gearshape") }

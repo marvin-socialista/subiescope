@@ -49,6 +49,18 @@ struct ContentView: View {
         .sheet(isPresented: $model.showCableSetup) {
             CableSetupView().environment(model)
         }
+        .sheet(isPresented: $model.showModeChooser) {
+            ModeChooserView().environment(model)
+        }
+        .sheet(isPresented: $model.showWizard) {
+            SetupWizardView().environment(model)
+        }
+        .alert("SubieScope quit unexpectedly last time", isPresented: $model.showCrashPrompt) {
+            Button("Send Report…") { DiagnosticReporter.send(model: model) }
+            Button("Not Now", role: .cancel) {}
+        } message: {
+            Text("Sorry about that. A report helps to find out why. It holds the log of what happened and your Mac model, and nothing else. To be safe, SubieScope did not connect automatically this time: press Connect when you are ready.")
+        }
     }
 
     private var badgeCount: Int {
@@ -62,26 +74,15 @@ struct MainToolbar: ToolbarContent {
     var body: some ToolbarContent {
         @Bindable var model = model
         ToolbarItemGroup(placement: .navigation) {
-            Picker("Cable", selection: $model.selectedPortID) {
-                if model.ports.isEmpty {
-                    Text("No cable found").tag(String?.none)
-                }
-                ForEach(model.ports) { port in
-                    Text(port.displayName).tag(Optional(port.path))
-                }
-                Divider()
-                Text("Demo ECU (simulated)").tag(Optional(AppModel.demoPortID))
-            }
-            .frame(minWidth: 220, maxWidth: 320)
-            .disabled(model.connection == .connecting || model.connection.isConnected)
-            .help("The USB cable to use. FTDI cables show up as \"FT232R USB UART\".")
+            DevicePicker()
+                .frame(minWidth: 220, maxWidth: 320)
 
             Button {
-                model.refreshPorts()
+                if model.mode == .obd { model.restartBLEScan() } else { model.refreshPorts() }
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
-            .help("Look for cables again")
+            .help(model.mode == .obd ? "Look for Bluetooth adapters again" : "Look for cables again")
             .disabled(model.connection.isConnected)
         }
 
@@ -99,7 +100,7 @@ struct MainToolbar: ToolbarContent {
                 Label(model.connection.isConnected ? "Disconnect" : "Connect",
                       systemImage: model.connection.isConnected ? "bolt.slash" : "bolt.horizontal")
             }
-            .help(model.connection.isConnected ? "Disconnect from the ECU (⌘K)" : "Connect to the ECU (⌘K)")
+            .help(model.connection.isConnected ? "Disconnect from the car (⌘K)" : "Connect to the car (⌘K)")
             .disabled(model.connection == .connecting)
 
             RecordButton()

@@ -2,28 +2,20 @@ import AppKit
 import SSMKit
 import SwiftUI
 
-/// First-run helper: finds the cable, explains drivers, and tests the connection.
-struct CableSetupView: View {
+/// The cable checks: find the cable, plug it into the car, test the connection.
+/// Used by the Cable Setup sheet and by the first-run wizard.
+struct CableSteps: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
+    @Binding var outcome: CableTest.Outcome?
+    @Binding var selectedPath: String?
     @State private var cables: [USBCable] = []
-    @State private var selectedPath: String?
     @State private var testing = false
-    @State private var outcome: CableTest.Outcome?
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+
+    private var passed: Bool { if case .ok? = outcome { return true }; return false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                Image(systemName: "cable.connector.horizontal")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Color.scopeBlue)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Cable Setup").font(.title2.weight(.semibold))
-                    Text("Three quick steps to connect to your Subaru.").foregroundStyle(.secondary)
-                }
-            }
-
             SetupStep(number: 1, title: "Plug the cable into your Mac", done: !cables.isEmpty) {
                 if cables.isEmpty {
                     Text("Waiting for a USB cable… Use a USB-C adapter if needed. SubieScope keeps looking.")
@@ -35,13 +27,13 @@ struct CableSetupView: View {
                 }
             }
 
-            SetupStep(number: 2, title: "Plug it into the car and turn the ignition ON", done: outcome.map { if case .ok = $0 { return true }; return false } ?? false) {
+            SetupStep(number: 2, title: "Plug it into the car and turn the ignition ON", done: passed) {
                 Text("The OBD port is under the dashboard on the driver's side. The engine may be off or running. If your cable has a switch, set it to K-line on pin 7 (often labelled \"VAG\" or \"1\").")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            SetupStep(number: 3, title: "Test the connection", done: outcome.map { if case .ok = $0 { return true }; return false } ?? false) {
+            SetupStep(number: 3, title: "Test the connection", done: passed) {
                 HStack {
                     Button {
                         runTest()
@@ -57,39 +49,20 @@ struct CableSetupView: View {
                 }
                 if let outcome {
                     let text = CableTest.explanation(outcome)
-                    let ok: Bool = { if case .ok = outcome { return true }; return false }()
                     Label {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(text.title).font(.body.weight(.semibold))
                             Text(text.detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }
                     } icon: {
-                        Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(ok ? .green : .orange)
+                        Image(systemName: passed ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(passed ? .green : .orange)
                     }
                     .padding(12)
-                    .background((ok ? Color.green : Color.orange).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                }
-            }
-
-            Spacer(minLength: 0)
-            HStack {
-                Button("Use the Demo Car Instead") {
-                    model.selectedPortID = AppModel.demoPortID
-                    finish(connect: true)
-                }
-                Spacer()
-                Button("Close") { finish(connect: false) }
-                    .keyboardShortcut(.cancelAction)
-                if case .ok = outcome {
-                    Button("Connect") { finish(connect: true) }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.defaultAction)
+                    .background((passed ? Color.green : Color.orange).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
                 }
             }
         }
-        .padding(24)
-        .frame(width: 560, height: 600)
         .onAppear(perform: scan)
         .onReceive(timer) { _ in if !testing { scan() } }
     }
@@ -116,6 +89,48 @@ struct CableSetupView: View {
                 }
             }
         }
+    }
+}
+
+/// Cable Setup sheet (Car menu): the same checks, on their own.
+struct CableSetupView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPath: String?
+    @State private var outcome: CableTest.Outcome?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: "cable.connector.horizontal")
+                    .font(.system(size: 28))
+                    .foregroundStyle(Color.scopeBlue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cable Setup").font(.title2.weight(.semibold))
+                    Text("Three quick steps to connect to your Subaru.").foregroundStyle(.secondary)
+                }
+            }
+
+            CableSteps(outcome: $outcome, selectedPath: $selectedPath)
+
+            Spacer(minLength: 0)
+            HStack {
+                Button("Use the Demo Car Instead") {
+                    model.selectedPortID = AppModel.demoPortID
+                    finish(connect: true)
+                }
+                Spacer()
+                Button("Close") { finish(connect: false) }
+                    .keyboardShortcut(.cancelAction)
+                if case .ok? = outcome {
+                    Button("Connect") { finish(connect: true) }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 560, height: 600)
     }
 
     private func finish(connect: Bool) {

@@ -9,7 +9,7 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if model.definitions == nil {
+                if model.definitions == nil && model.mode == .ssm {
                     DefinitionsBanner()
                 }
                 if model.isPlayingBack, let playback = model.playback {
@@ -21,6 +21,20 @@ struct DashboardView: View {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.callout)
+                }
+                if let notice = model.obdNotice, model.connection.isConnected {
+                    Label(notice, systemImage: "info.circle")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                }
+                if model.mode == .obd, model.connection.isConnected, model.obdInfo != nil {
+                    let hidden = model.dashboardIDs.count - model.visibleDashboardIDs.count
+                    if hidden > 0 {
+                        Label("\(hidden) gauge\(hidden == 1 ? " is" : "s are") hidden because this car does not report \(hidden == 1 ? "it" : "them"). Add others with the + tile.",
+                              systemImage: "eye.slash")
+                            .foregroundStyle(.secondary)
+                            .font(.callout)
+                    }
                 }
                 DashboardGridLayout {
                     ForEach(model.visibleDashboardIDs, id: \.self) { id in
@@ -120,18 +134,24 @@ struct OfflineBanner: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "cable.connector")
+            Image(systemName: model.mode.symbol)
                 .font(.title2)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Not connected").font(.headline)
-                Text("Plug the cable into the OBD port under the dashboard, turn the ignition ON (engine running or not), then press Connect. No cable handy? Pick \"Demo ECU\" in the cable menu.")
+                Text(model.mode == .obd
+                     ? "Plug the Bluetooth adapter into the OBD port under the dashboard, turn the ignition ON (engine running or not), pick the adapter in the toolbar, then press Connect. No adapter handy? Pick \"Demo OBD-II car\" in the adapter menu."
+                     : "Plug the cable into the OBD port under the dashboard, turn the ignition ON (engine running or not), then press Connect. No cable handy? Pick \"Demo ECU\" in the cable menu.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Button("Cable Setup…") { model.showCableSetup = true }
+            if model.mode == .ssm {
+                Button("Cable Setup…") { model.showCableSetup = true }
+            } else {
+                Button("Connection Type…") { model.showModeChooser = true }
+            }
             Button("Connect") { Task { await model.connect() } }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.connection == .connecting)

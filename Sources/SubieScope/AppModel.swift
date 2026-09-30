@@ -75,13 +75,40 @@ final class AppModel {
     // MARK: Ports and connection
     var ports: [SerialPortInfo] = []
     var selectedPortID: String? {
-        didSet { UserDefaults.standard.set(selectedPortID, forKey: "selectedPort") }
+        // The demo car is a one-off choice: it must not stay selected the next time the app starts.
+        didSet { if selectedPortID != Self.demoPortID { UserDefaults.standard.set(selectedPortID, forKey: "selectedPort") } }
     }
     var connection: ConnectionState = .disconnected
     var identity: ECUIdentity?
     var isDemo = false
     private var session: SSMSession?
     private var demoECU: DemoECU?
+
+    // MARK: Connection mode (SSM cable or OBD-II adapter)
+    var mode: ConnectionMode = .saved {
+        didSet { UserDefaults.standard.set(mode.rawValue, forKey: "connectionMode") }
+    }
+    /// The "which one do I need" sheet: Car > Connection Type.
+    var showModeChooser = false
+    /// The first-run wizard (also Car > Setup Wizard).
+    var showWizard = false
+    /// The last run ended without a clean exit: offer to send a report.
+    var showCrashPrompt = false
+    /// Traffic lines still to be written to the log file for this connection (the start says the most).
+    @ObservationIgnored var trafficLogBudget = 250
+    var bleAdapters: [BLEAdapter] = []
+    var bleStatus: BLEStatus = .idle
+    var selectedAdapterID: String? {
+        didSet { if selectedAdapterID != Self.demoOBDID { UserDefaults.standard.set(selectedAdapterID, forKey: "selectedAdapter") } }
+    }
+    var obdInfo: OBDInfo?
+    var obdSession: OBDSession?
+    /// Something worth knowing about the car's answers (values it does not report), shown on the dashboard.
+    var obdNotice: String?
+    @ObservationIgnored var simulatedELM: SimulatedELM?
+    @ObservationIgnored let bleScanner = BLEScanner()
+    /// Set while a whole selection is swapped (a mode change), so half of it is never saved.
+    @ObservationIgnored var suppressPersist = false
 
     // MARK: Definitions
     var definitions: LoggerDefinitions?
@@ -97,7 +124,10 @@ final class AppModel {
     var unitChoice: [String: String] = [:] { didSet { persistSelection(); selectionChanged() } }
     /// Style and size per dashboard gauge, keyed by parameter ID.
     var tileConfigs: [String: TileConfig] = [:] {
-        didSet { if let data = try? JSONEncoder().encode(tileConfigs) { UserDefaults.standard.set(data, forKey: "tileConfigs") } }
+        didSet {
+            guard !suppressPersist, let data = try? JSONEncoder().encode(tileConfigs) else { return }
+            UserDefaults.standard.set(data, forKey: "tileConfigs" + mode.keySuffix)
+        }
     }
     var unitSystem: UnitSystem = .metric {
         didSet { UserDefaults.standard.set(unitSystem.rawValue, forKey: "unitSystem"); selectionChanged() }
@@ -122,6 +152,8 @@ final class AppModel {
     var recordingStart: Date?
     var recordedRows = 0
     private var writer: CSVLogWriter?
+    /// Parameter and units of each column of the file being recorded.
+    var recordedColumnKeys: [String] { writer?.columns.map { $0.id + $0.conversion.units } ?? [] }
     var logsFolder: URL {
         didSet { UserDefaults.standard.set(logsFolder.path, forKey: "logsFolder") }
     }
@@ -139,29 +171,47 @@ final class AppModel {
     private var consoleCounter = 0
 
     init() {
+        let info = Bundle.main.infoDictionary
+        DiagnosticLog.shared.startSession(appVersion: info?["CFBundleShortVersionString"] as? String ?? "dev",
+                                          build: info?["CFBundleVersion"] as? String ?? "0")
+        // After a crash: no automatic connecting or Bluetooth scanning this once, in case that was the cause.
+        let safeStart = DiagnosticLog.shared.previousSessionEndedUnexpectedly
+        showCrashPrompt = safeStart
         let defaults = UserDefaults.standard
         logsFolder = defaults.string(forKey: "logsFolder").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("SubieScope Logs")
         unitSystem = UnitSystem(rawValue: defaults.string(forKey: "unitSystem") ?? "") ?? .metric
-        loggedIDs = Set(defaults.stringArray(forKey: "loggedIDs") ?? [])
-        dashboardIDs = defaults.stringArray(forKey: "dashboardIDs") ?? []
-        unitChoice = (defaults.dictionary(forKey: "unitChoice") as? [String: String]) ?? [:]
-        tileConfigs = defaults.data(forKey: "tileConfigs").flatMap { try? JSONDecoder().decode([String: TileConfig].self, from: $0) } ?? [:]
+        // First launch shows the setup wizard. People who used SubieScope before the OBD-II mode existed
+        // keep the SSM cable and are not interrupted; they can still run the wizard from the Car menu.
+        if defaults.object(forKey: "setupWizardDone") == nil {
+            let existingUser = ["cableSetupSeen", "dashboardIDs", "selectedPort"].contains { defaults.object(forKey: $0) != nil }
+            if existingUser {
+                defaults.set(true, forKey: "setupWizardDone")
+                if !ConnectionMode.hasChosen { mode = .ssm }
+            }
+        }
+        let saved = Self.savedSelection(for: mode)
+        loggedIDs = saved.logged
+        dashboardIDs = saved.dashboard
+        unitChoice = saved.units
+        tileConfigs = saved.tiles
         selectedPortID = defaults.string(forKey: "selectedPort")
+        selectedAdapterID = defaults.string(forKey: "selectedAdapter")
         loadDefinitions()
-        if definitions == nil {
+        if definitions == nil && mode == .ssm {
             Task { await downloadDefinitions() }
         }
         refreshPorts()
+        if mode == .obd && !safeStart { startBLEScan() }
         if dashboardIDs.isEmpty { dashboardIDs = defaultDashboard(); applyDefaultTileConfigs() }
         if loggedIDs.isEmpty { loggedIDs = Set(defaultLogged()) }
         if let raw = defaults.string(forKey: "section"), let s = AppSection(rawValue: raw) { section = s }
         // Demo only: start with a simulated fault (e.g. -demoFault vacuumLeak).
         if let raw = defaults.string(forKey: "demoFault"), let fault = DemoFault(rawValue: raw) { demoFault = fault }
-        if autoConnect && selectedPortID != nil {
+        if autoConnect && !safeStart && (mode == .obd ? selectedAdapterID != nil : selectedPortID != nil) {
             Task { await connect() }
-        } else if !defaults.bool(forKey: "cableSetupSeen") {
-            showCableSetup = true
+        } else if !defaults.bool(forKey: "setupWizardDone") {
+            showWizard = true
         }
     }
 
@@ -188,7 +238,7 @@ final class AppModel {
             }
             definitions = defs
             definitionsError = nil
-            applyDefinitions()
+            applyParameters()
         } catch {
             definitionsError = error.localizedDescription
         }
@@ -217,6 +267,11 @@ final class AppModel {
         loadDefinitions()
     }
 
+    /// The parameters to offer: RomRaider's for the connected ECU in SSM mode, standard OBD-II ones in OBD mode.
+    func applyParameters() {
+        mode == .obd ? applyOBDParameters() : applyDefinitions()
+    }
+
     private func applyDefinitions() {
         guard let definitions else { return }
         let set = definitions.parameterSet(for: identity)
@@ -226,9 +281,15 @@ final class AppModel {
     }
 
     /// A varied first-run layout, so the gauge styles are visible from the start.
-    private func applyDefaultTileConfigs() {
+    func applyDefaultTileConfigs() {
         guard tileConfigs.isEmpty else { return }
-        let layout: [(String, GaugeStyle, TileSize)] = [
+        let layout: [(String, GaugeStyle, TileSize)] = mode == .obd ? [
+            ("Engine Speed", .dial, .large), ("Manifold Relative Pressure", .dial, .large),
+            ("Vehicle Speed", .digital, .small), ("Calculated Engine Load", .bar, .small),
+            ("Short Term Fuel Trim Bank 1", .bar, .small), ("Long Term Fuel Trim Bank 1", .bar, .small),
+            ("Ignition Total Timing", .graph, .wide), ("Coolant Temperature", .dial, .small),
+            ("Intake Air Temperature", .dial, .small), ("Throttle Opening Angle", .bar, .wide),
+        ] : [
             ("Engine Speed", .dial, .large), ("Manifold Relative Pressure", .dial, .large),
             ("A/F Sensor #1", .digital, .small), ("IAM", .digital, .small),
             ("Feedback Knock Correction", .bar, .small), ("Fine Learning Knock Correction", .bar, .small),
@@ -242,14 +303,25 @@ final class AppModel {
         tileConfigs = configs
     }
 
-    private func defaultDashboard() -> [String] {
+    func defaultDashboard() -> [String] {
+        if mode == .obd {
+            let wanted = ["Engine Speed", "Manifold Relative Pressure", "Vehicle Speed", "Calculated Engine Load",
+                          "Short Term Fuel Trim Bank 1", "Long Term Fuel Trim Bank 1", "Ignition Total Timing",
+                          "Coolant Temperature", "Intake Air Temperature", "Throttle Opening Angle"]
+            return wanted.compactMap { resolve($0)?.id }
+        }
         let wanted = ["Engine Speed", "Manifold Relative Pressure", "A/F Sensor #1", "Feedback Knock Correction",
                       "Fine Learning Knock Correction", "IAM", "Ignition Total Timing", "Coolant Temperature",
                       "Intake Air Temperature", "Throttle Opening Angle"]
         return wanted.compactMap { resolve($0)?.id }
     }
 
-    private func defaultLogged() -> [String] {
+    func defaultLogged() -> [String] {
+        if mode == .obd {
+            let extra = ["Mass Airflow", "A/F Sensor #1", "Battery Voltage", "Absolute Engine Load", "Accelerator Pedal Angle",
+                         "Commanded Lambda", "Engine Oil Temperature"]
+            return defaultDashboard() + extra.compactMap { resolve($0)?.id }
+        }
         let extra = ["Vehicle Speed", "Engine Load (Relative)", "Mass Airflow", "A/F Correction #1", "A/F Learning #1",
                      "Knock Correction Advance", "Primary Wastegate Duty Cycle", "Fuel Injector #1 Pulse Width",
                      "Accelerator Pedal Angle", "Gear Position", "Target Boost"]
@@ -372,10 +444,22 @@ final class AppModel {
     }
 
     private func persistSelection() {
+        guard !suppressPersist else { return }
         let d = UserDefaults.standard
-        d.set(Array(loggedIDs).sorted(), forKey: "loggedIDs")
-        d.set(dashboardIDs, forKey: "dashboardIDs")
-        d.set(unitChoice, forKey: "unitChoice")
+        let suffix = mode.keySuffix
+        d.set(Array(loggedIDs).sorted(), forKey: "loggedIDs" + suffix)
+        d.set(dashboardIDs, forKey: "dashboardIDs" + suffix)
+        d.set(unitChoice, forKey: "unitChoice" + suffix)
+    }
+
+    /// Gauges, logged parameters and units are remembered separately for each connection mode.
+    static func savedSelection(for mode: ConnectionMode) -> (logged: Set<String>, dashboard: [String], units: [String: String], tiles: [String: TileConfig]) {
+        let d = UserDefaults.standard
+        let suffix = mode.keySuffix
+        return (Set(d.stringArray(forKey: "loggedIDs" + suffix) ?? []),
+                d.stringArray(forKey: "dashboardIDs" + suffix) ?? [],
+                (d.dictionary(forKey: "unitChoice" + suffix) as? [String: String]) ?? [:],
+                d.data(forKey: "tileConfigs" + suffix).flatMap { try? JSONDecoder().decode([String: TileConfig].self, from: $0) } ?? [:])
     }
 
     // MARK: Ports
@@ -393,6 +477,7 @@ final class AppModel {
     }
 
     var selectedPortLabel: String {
+        if mode == .obd { return selectedAdapterLabel }
         if selectedPortID == Self.demoPortID { return "Demo ECU (simulated)" }
         return ports.first { $0.path == selectedPortID }?.displayName ?? "No cable found"
     }
@@ -400,6 +485,8 @@ final class AppModel {
     // MARK: Connection
 
     func connect() async {
+        trafficLogBudget = 250
+        if mode == .obd { await connectOBD(); return }
         guard connection != .connecting, let portID = selectedPortID else {
             if selectedPortID == nil { connection = .failed("No cable found. Plug in the USB cable and press Refresh.") }
             return
@@ -458,6 +545,7 @@ final class AppModel {
         session = nil
         demoECU?.stop()
         demoECU = nil
+        closeOBD()
         if connection == .connected { log("Disconnected") }
         connection = .disconnected
         engineStatus = nil
@@ -481,7 +569,7 @@ final class AppModel {
         }
     }
 
-    private func selectionChanged() {
+    func selectionChanged() {
         guard connection.isConnected else { return }
         restartTask?.cancel()
         restartTask = Task { [weak self] in
@@ -491,7 +579,8 @@ final class AppModel {
         }
     }
 
-    private func startPolling() {
+    func startPolling() {
+        if mode == .obd { startOBDPolling(); return }
         guard let session else { return }
         let items = polledItems
         if isRecording { rotateRecordingIfColumnsChanged(items) }
@@ -507,7 +596,7 @@ final class AppModel {
         })
     }
 
-    private func resetLive() {
+    func resetLive() {
         latest = [:]
         history = [:]
         extremes = [:]
@@ -521,7 +610,7 @@ final class AppModel {
         extremes[id] = latest[id].flatMap { $0.isFinite ? $0...$0 : nil }
     }
 
-    private func ingest(_ sample: Sample) {
+    func ingest(_ sample: Sample) {
         pollError = nil
         latest.merge(sample.values) { _, new in new }
         lastRoundTrip = sample.roundTrip
@@ -554,14 +643,16 @@ final class AppModel {
         }
     }
 
-    private func pollFailed(_ error: Error, fatal: Bool) {
+    func pollFailed(_ error: Error, fatal: Bool) {
         pollError = error.localizedDescription
         log("Poll error: \(error.localizedDescription)")
         if fatal {
             stopRecording()
-            connection = .failed("Lost contact with the ECU: \(error.localizedDescription)")
+            connection = .failed(mode == .obd ? "Lost contact with the adapter: \(error.localizedDescription)"
+                                               : "Lost contact with the ECU: \(error.localizedDescription)")
             session?.close()
             session = nil
+            closeOBD()
         }
     }
 
@@ -611,6 +702,7 @@ final class AppModel {
     // MARK: Trouble codes
 
     func readTroubleCodes() async {
+        if mode == .obd { await readOBDTroubleCodes(); return }
         guard let session, connection.isConnected else { return }
         let defs = codeDefinitions
         guard !defs.isEmpty else {
@@ -633,6 +725,7 @@ final class AppModel {
     }
 
     func clearTroubleCodes() async {
+        if mode == .obd { await clearOBDTroubleCodes(); return }
         guard let session, connection.isConnected else { return }
         clearState = "Clearing…"
         do {
@@ -778,7 +871,17 @@ final class AppModel {
     var recipeRun: RecipeRun?
     var logAnalysis: LogAnalysisResult?
     var demoFault: DemoFault = .none {
-        didSet { demoECU?.setFault(demoFault) }
+        didSet { setDemoFault(demoFault) }
+    }
+
+    func setDemoFault(_ fault: DemoFault) {
+        demoECU?.setFault(fault)
+        simulatedELM?.world.setFault(fault)
+    }
+
+    func setDemoScenario(_ scenario: DemoScenario?) {
+        demoECU?.setScenario(scenario)
+        simulatedELM?.world.setScenario(scenario)
     }
 
     func binding(for recipe: Recipe) -> RecipeBinding {
@@ -798,8 +901,8 @@ final class AppModel {
         run.logURL = run.writer == nil ? nil : url
         recipeRun = run
         logAnalysis = nil
-        demoECU?.setFault(demoFault)
-        demoECU?.setScenario(recipe.steps.first?.demo)
+        setDemoFault(demoFault)
+        setDemoScenario(recipe.steps.first?.demo)
         log("Recipe started: \(recipe.title)")
         startPolling()
     }
@@ -824,7 +927,7 @@ final class AppModel {
 
     private func recipeStepChanged(_ run: RecipeRun) {
         if run.isRunning {
-            demoECU?.setScenario(run.step?.demo)
+            setDemoScenario(run.step?.demo)
         } else {
             finishRecipe(run)
         }
@@ -833,7 +936,7 @@ final class AppModel {
     private func finishRecipe(_ run: RecipeRun) {
         run.writer?.close()
         run.writer = nil
-        demoECU?.setScenario(nil)
+        setDemoScenario(nil)
         if run.findings != nil, let logURL = run.logURL {
             let reportURL = logURL.deletingPathExtension().appendingPathExtension("txt")
             try? run.reportText().write(to: reportURL, atomically: true, encoding: .utf8)
@@ -863,19 +966,24 @@ final class AppModel {
 
     func log(_ text: String) {
         appendConsole(ConsoleLine(id: nextConsoleID(), time: Date(), kind: nil, text: text))
+        DiagnosticLog.shared.info("app", text)
     }
 
-    private func logTraffic(_ direction: SSMTrafficDirection, _ bytes: [UInt8]) {
+    func logTraffic(_ direction: SSMTrafficDirection, _ bytes: [UInt8]) {
+        if trafficLogBudget > 0 {
+            trafficLogBudget -= 1
+            DiagnosticLog.shared.debug("ssm", "\(direction) \(bytes.hexString)")
+        }
         guard consoleCapturesTraffic else { return }
         appendConsole(ConsoleLine(id: nextConsoleID(), time: Date(), kind: direction, text: bytes.hexString))
     }
 
-    private func nextConsoleID() -> Int {
+    func nextConsoleID() -> Int {
         consoleCounter += 1
         return consoleCounter
     }
 
-    private func appendConsole(_ line: ConsoleLine) {
+    func appendConsole(_ line: ConsoleLine) {
         consoleLines.append(line)
         if consoleLines.count > 3000 { consoleLines.removeFirst(consoleLines.count - 3000) }
     }
