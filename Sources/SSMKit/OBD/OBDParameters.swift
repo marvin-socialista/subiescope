@@ -27,7 +27,7 @@ public enum OBDParameters {
 
     /// Values that change slowly (temperatures, voltage, fuel level). They are read every few
     /// rounds instead of every round, which leaves more time for the ones that move fast.
-    public static let slowPIDs: Set<UInt8> = [0x05, 0x0F, 0x42, 0x5C, 0x46, 0x33, 0x2F, 0x1F, 0x3C, 0x0A]
+    public static let slowPIDs: Set<UInt8> = [0x05, 0x0F, 0x42, 0x5C, 0x46, 0x33, 0x2F, 0x1F, 0x3C, 0x0A, 0x21, 0x30, 0x31, 0x4D, 0x4E]
 
     /// The calculated boost value, and the ID of the parameter it is computed from.
     public static let boostID = "OBDBOOST"
@@ -102,6 +102,24 @@ public enum OBDParameters {
         OBDPID(pid: 0x49, name: "Accelerator Pedal Angle", description: "How far the accelerator pedal is pressed.", dataBytes: 1, valueBytes: 1,
                conversions: [c("%", "x*100/255", min: 0, max: 100)]),
         OBDPID(pid: 0x4C, name: "Commanded Throttle Actuator", description: "Where the ECU wants the electronic throttle to be.", dataBytes: 1, valueBytes: 1,
+               conversions: [c("%", "x*100/255", min: 0, max: 100)]),
+        OBDPID(pid: 0x03, name: "Fuel System Status", description: "How the ECU is controlling the mixture. 2 = closed loop (using the O2 sensor, normal when warm), 1 = open loop cold start, 4 = open loop during acceleration or deceleration, 8 = open loop because of a fault, 16 = closed loop with a fault.", dataBytes: 2, valueBytes: 1,
+               conversions: [c("status", "x", "0", min: 0, max: 16)]),
+        OBDPID(pid: 0x21, name: "Distance With Check Engine Light On", description: "Distance driven with the check engine light on.", dataBytes: 2, valueBytes: 2,
+               conversions: [c("km", "x", "0", min: 0, max: 65535), c("miles", "x*0.621371", "0", min: 0, max: 40000)]),
+        OBDPID(pid: 0x30, name: "Warm-ups Since Codes Cleared", description: "Engine warm-up cycles since the trouble codes were last cleared.", dataBytes: 1, valueBytes: 1,
+               conversions: [c("count", "x", "0", min: 0, max: 255)]),
+        OBDPID(pid: 0x31, name: "Distance Since Codes Cleared", description: "Distance driven since the trouble codes were last cleared.", dataBytes: 2, valueBytes: 2,
+               conversions: [c("km", "x", "0", min: 0, max: 65535), c("miles", "x*0.621371", "0", min: 0, max: 40000)]),
+        OBDPID(pid: 0x47, name: "Absolute Throttle Position B", description: "Second throttle position sensor (the ECU compares the two).", dataBytes: 1, valueBytes: 1,
+               conversions: [c("%", "x*100/255", min: 0, max: 100)]),
+        OBDPID(pid: 0x4A, name: "Accelerator Pedal Position E", description: "Second accelerator pedal position sensor.", dataBytes: 1, valueBytes: 1,
+               conversions: [c("%", "x*100/255", min: 0, max: 100)]),
+        OBDPID(pid: 0x4D, name: "Time With Check Engine Light On", description: "Engine running time with the check engine light on.", dataBytes: 2, valueBytes: 2,
+               conversions: [c("min", "x", "0", min: 0, max: 65535)]),
+        OBDPID(pid: 0x4E, name: "Time Since Codes Cleared", description: "Engine running time since the trouble codes were last cleared.", dataBytes: 2, valueBytes: 2,
+               conversions: [c("min", "x", "0", min: 0, max: 65535)]),
+        OBDPID(pid: 0x5A, name: "Relative Accelerator Pedal Position", description: "Accelerator pedal position relative to its learned range.", dataBytes: 1, valueBytes: 1,
                conversions: [c("%", "x*100/255", min: 0, max: 100)]),
         OBDPID(pid: 0x5C, name: "Engine Oil Temperature", description: "Engine oil temperature.", dataBytes: 1, valueBytes: 1,
                conversions: [c("C", "x-40", "0", min: -40, max: 150), c("F", "(x-40)*1.8+32", "0", min: -40, max: 302)]),
