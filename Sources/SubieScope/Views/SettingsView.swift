@@ -36,6 +36,11 @@ struct SettingsView: View {
 
                 Toggle("Connect automatically when SubieScope opens", isOn: $model.autoConnect)
 
+                Toggle("Let the command line tool control the app (developer)", isOn: $model.remoteControlOn)
+                Text("Lets programs you run on this Mac send read-only requests to the connected adapter through subiescope-cli. Off by default. Nothing that clears codes or writes to the car gets through.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 if model.mode == .ssm {
                     Toggle("Fast poll (continuous mode)", isOn: $model.fastPoll)
                     Text("The ECU keeps sending values without being asked each time, roughly doubling the sample rate. Turn it off if logging stalls.")

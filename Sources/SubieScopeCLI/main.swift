@@ -14,6 +14,7 @@ commands:
   log                        Print live values (and optionally write a CSV)
   codes                      Read trouble codes
   demo                       Run the demo ECU on a pseudo terminal for testing
+  remote <command>           Talk to a running SubieScope and its OBD-II adapter (see `remote help`)
 
 options:
   --port PATH                Serial device (default: first FTDI/USB port)
@@ -217,6 +218,33 @@ case "log":
     writer?.close()
     lock.unlock()
     if let path = option("--csv") { print("Saved \(path)") }
+
+case "remote":
+    // Live control of the running app: raw requests to the connected adapter, without rebuilding anything.
+    // Needs Settings > General > "Let the command line tool control the app" (or -remoteControl YES).
+    func remoteSend(_ line: String, timeout: TimeInterval = 30) -> [String] {
+        do { return try RemoteClient.send(line, timeout: timeout) } catch { fail(error.localizedDescription) }
+    }
+    if args.first == "scan22" {
+        // remote scan22 <request header> <response header> <first DID> <last DID>, e.g. 7E0 7E8 0000 00FF
+        guard args.count >= 5, let first = UInt16(args[3], radix: 16), let last = UInt16(args[4], radix: 16), first <= last else {
+            fail("usage: subiescope-cli remote scan22 <request header> <response header> <first DID> <last DID>   e.g. 7E0 7E8 0000 00FF")
+        }
+        _ = remoteSend("send ATSH\(args[1])"); _ = remoteSend("send ATCRA\(args[2])")
+        print("Scanning Mode 22 on \(args[1]) -> \(args[2]), \(String(format: "%04X", first)) to \(String(format: "%04X", last)). Only answers are shown.")
+        var found = 0
+        for did in first...last {
+            let request = String(format: "22%04X", did)
+            let reply = remoteSend("send \(request)").joined(separator: " ")
+            let noAnswer = reply.uppercased().contains("NO DATA") || reply.contains("(no reply)") || reply.isEmpty
+            if !noAnswer { print("\(request) -> \(reply)"); found += 1 }
+        }
+        print("\(found) DIDs answered.")
+        _ = remoteSend("release")
+    } else {
+        let reply = remoteSend(args.isEmpty ? "help" : args.joined(separator: " "))
+        reply.forEach { print($0) }
+    }
 
 case "demo":
     let defs = try? LoggerDefinitions.bundled()

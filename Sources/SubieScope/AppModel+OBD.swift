@@ -83,6 +83,9 @@ extension AppModel {
     private func bleScanChanged(_ status: BLEStatus, _ list: [BLEAdapter]) {
         bleStatus = status
         bleAdapters = list
+        // An adapter stops advertising while connected, so it drops out of the list. Remember its name.
+        for adapter in list { rememberedAdapterNames[adapter.id] = adapter.name }
+        if let id = selectedAdapterID, let name = rememberedAdapterNames[id] { UserDefaults.standard.set(name, forKey: "selectedAdapterName") }
         // Pick the adapter automatically when there is one obvious choice.
         let known = Set(list.map(\.id) + [Self.demoOBDID])
         if selectedAdapterID == nil || (!known.contains(selectedAdapterID!) && !connection.isConnected && connection != .connecting),
@@ -94,7 +97,14 @@ extension AppModel {
     var selectedAdapterLabel: String {
         if selectedAdapterID == Self.demoOBDID { return "Demo OBD-II car (simulated)" }
         if let adapter = bleAdapters.first(where: { $0.id == selectedAdapterID }) { return adapter.name }
-        return selectedAdapterID == nil ? "No adapter found" : "Saved adapter (not in range)"
+        if let id = selectedAdapterID {
+            // Connected adapters stop advertising, so they are not in the scan list: use the name we saw earlier.
+            if let name = rememberedAdapterNames[id] ?? UserDefaults.standard.string(forKey: "selectedAdapterName") {
+                return connection.isConnected ? name : "\(name) (not in range)"
+            }
+            return "Saved adapter (not in range)"
+        }
+        return "No adapter found"
     }
 
     // MARK: Connecting

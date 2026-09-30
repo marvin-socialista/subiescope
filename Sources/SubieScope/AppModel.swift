@@ -105,6 +105,17 @@ final class AppModel {
     var obdSession: OBDSession?
     /// Something worth knowing about the car's answers (values it does not report), shown on the dashboard.
     var obdNotice: String?
+    /// Command line remote control (developer): the control socket, and whether raw requests paused live polling.
+    @ObservationIgnored var remoteServer: RemoteServer?
+    var remoteHold = false
+    /// Names of adapters seen while scanning, by identifier.
+    var rememberedAdapterNames: [String: String] = [:]
+    var remoteControlOn: Bool = UserDefaults.standard.bool(forKey: "remoteControl") {
+        didSet {
+            UserDefaults.standard.set(remoteControlOn, forKey: "remoteControl")
+            applyRemoteControl()
+        }
+    }
     @ObservationIgnored var simulatedELM: SimulatedELM?
     @ObservationIgnored let bleScanner = BLEScanner()
     /// Set while a whole selection is swapped (a mode change), so half of it is never saved.
@@ -203,6 +214,7 @@ final class AppModel {
         }
         refreshPorts()
         if mode == .obd && !safeStart { startBLEScan() }
+        applyRemoteControl()
         if dashboardIDs.isEmpty { dashboardIDs = defaultDashboard(); applyDefaultTileConfigs() }
         if loggedIDs.isEmpty { loggedIDs = Set(defaultLogged()) }
         if let raw = defaults.string(forKey: "section"), let s = AppSection(rawValue: raw) { section = s }
@@ -546,6 +558,7 @@ final class AppModel {
         demoECU?.stop()
         demoECU = nil
         closeOBD()
+        remoteHold = false
         if connection == .connected { log("Disconnected") }
         connection = .disconnected
         engineStatus = nil

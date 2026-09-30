@@ -117,6 +117,22 @@ The app bundle also contains `subiescope-cli`, which is handy at the car or for 
 
 Add `--demo` to any command to use the simulated car.
 
+### Talking to the running app (developer)
+
+With **Settings > General > Let the command line tool control the app** on (or start the app with `-remoteControl YES`), `subiescope-cli remote` sends read-only requests to the adapter the app is connected to. That makes it possible to try things, or let an AI assistant try things, against a real car without rebuilding anything:
+
+```sh
+subiescope-cli remote adapters            # Bluetooth adapters in range
+subiescope-cli remote connect             # connect the selected adapter
+subiescope-cli remote send 010C           # any raw request, here engine speed
+subiescope-cli remote send ATSH7A2        # AT commands work too (set the request header)
+subiescope-cli remote scan22 7E0 7E8 10A0 10FF   # which Mode 22 values does the ECU answer?
+subiescope-cli remote values              # the live values
+subiescope-cli remote release             # reset the adapter and resume live polling
+```
+
+It is off by default and listens on a socket only your own user can open. Only read-only services are allowed (current data, trouble codes, vehicle info, read-data-by-identifier). Clearing codes, writing to the car, security access, routines, ECU reset and reprogramming are refused, and so are the adapter commands that change it permanently. Every command goes in the log.
+
 ## When something goes wrong
 
 SubieScope keeps a log of what it does in `~/Library/Logs/SubieScope/`. It leaves out your name (your home folder shows as `~`) and anything shaped like a VIN, and it never leaves your Mac by itself. If the app crashes, it says so the next time it starts, and starts without connecting automatically. **Help > Send Diagnostic Report…** bundles the log, your Mac model and any macOS crash reports into one file you can email to the developer or attach to an [issue](https://github.com/marvin-socialista/subiescope/issues). **Help > Save Diagnostic Report…** saves it instead.
