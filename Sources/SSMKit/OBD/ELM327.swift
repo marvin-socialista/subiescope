@@ -283,9 +283,7 @@ public final class ELM327 {
     /// Puts the adapter into raw K-line mode at 4800 baud with no OBD framing, which is what
     /// Subaru SSM needs. Genuine ELM327 chips (v1.4+) support this; many clones do not, so the
     /// returned setup lists what the adapter accepted. `ok` is false when SSM is not possible.
-    /// `protocolNumber`: 3 = ISO 9141-2, 4 = ISO 14230-4 KWP (5-baud), 5 = ISO 14230-4 KWP (fast).
-    /// All three run on the K-line; different Subarus and adapters answer to different ones.
-    public func configureRawKLine(protocolNumber: Int = 3) throws -> RawKLineSetup {
+    public func configureRawKLine() throws -> RawKLineSetup {
         var accepted: [String] = []
         var rejected: [String] = []
         func at(_ cmd: String) {
@@ -294,14 +292,12 @@ public final class ELM327 {
         }
         _ = try send("ATZ", timeout: 4)
         for cmd in ["ATE0", "ATL0", "ATS0"] { at(cmd) }
-        at("ATSP\(protocolNumber)")    // K-line protocol (ISO 9141-2 or KWP)
+        at("ATSP3")    // ISO 9141-2 (K-line)
         at("ATIB48")   // ISO baud 4800: the Subaru SSM rate, and the capability clones usually lack
         at("ATCAF0")   // automatic formatting off: we supply and receive whole frames, checksum included
-        at("ATAL")     // allow long messages: SSM replies exceed the 7-byte ISO 9141 default
         at("ATH1")     // keep the headers in the reply so we see the full SSM frame
         at("ATBI")     // begin the protocol without the normal init handshake (SSM has none)
-        _ = try? send("ATSTFF")   // long per-request timeout (~1 s) for slow SSM replies
-        _ = try? send("ATAT0")    // do not shorten timing adaptively
+        _ = try? send("ATST64")   // per-request timeout ~400 ms
         aggressiveTiming = false
         return RawKLineSetup(accepted: accepted, rejected: rejected)
     }

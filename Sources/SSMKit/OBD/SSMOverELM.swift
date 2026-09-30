@@ -28,53 +28,37 @@ public final class SSMOverELM {
 
     /// Sets the adapter to raw mode and asks the ECU to identify itself. Never throws: the result
     /// says whether it worked and, if not, whether the adapter or the car is the reason.
-    /// K-line protocols to try, in order: ISO 9141-2, then KWP (5-baud), then KWP (fast).
-    static let kLineProtocols: [(number: Int, name: String)] = [(3, "ISO 9141-2"), (4, "KWP 5-baud"), (5, "KWP fast")]
-
     public func probe(device: SSMDevice = .engine) -> ProbeResult {
-        var firstSetup: ELM327.RawKLineSetup?
-        var lastReply: [UInt8] = []
-        let request = (try? SSMPacket.initRequest(to: device).encoded()) ?? []
-
-        for proto in Self.kLineProtocols {
-            let setup: ELM327.RawKLineSetup
-            do {
-                setup = try elm.configureRawKLine(protocolNumber: proto.number)
-            } catch {
-                DiagnosticLog.shared.warning("ssm-elm", "\(proto.name): setup failed: \(error.localizedDescription)")
-                continue
-            }
-            if firstSetup == nil { firstSetup = setup }
-            DiagnosticLog.shared.info("ssm-elm", "\(proto.name): accepted \(setup.accepted.joined(separator: " ")), rejected \(setup.rejected.joined(separator: " "))")
-            guard setup.ok else { continue }   // clone chip: no point trying this protocol
-
-            // The first SSM request after the bus wakes is often lost, so try a few times.
-            for attempt in 1...4 {
-                let reply = (try? elm.exchangeRawKLine(request, timeout: 2.0)) ?? []
-                DiagnosticLog.shared.info("ssm-elm", "\(proto.name) init attempt \(attempt): \(reply.isEmpty ? "no answer" : reply.hexString)")
-                if !reply.isEmpty { lastReply = reply }
-                if let frame = Self.firstSSMFrame(in: reply, from: device.rawValue),
-                   let identity = try? ECUIdentity.parse(initReply: SSMPacket.decode(frame)) {
-                    return ProbeResult(setup: setup, identity: identity, rawReply: reply,
-                                       reason: "Success on \(proto.name). The ECU answered over SSM (ECU ID \(identity.ecuID)). This adapter can read your Subaru with SSM, wirelessly. Full SSM logging over Bluetooth can be built on this.")
-                }
-                Thread.sleep(forTimeInterval: 0.3)
-            }
-        }
-
-        guard let setup = firstSetup else {
+        let setup: ELM327.RawKLineSetup
+        do {
+            setup = try elm.configureRawKLine()
+        } catch {
+            DiagnosticLog.shared.warning("ssm-elm", "Raw setup failed: \(error.localizedDescription)")
             return ProbeResult(setup: .init(accepted: [], rejected: ["ATZ"]), identity: nil, rawReply: [],
-                               reason: "The adapter did not respond to the setup commands.")
+                               reason: "The adapter did not respond to the setup commands: \(error.localizedDescription)")
         }
+        DiagnosticLog.shared.info("ssm-elm", "Raw K-line setup: accepted \(setup.accepted.joined(separator: " ")), rejected \(setup.rejected.joined(separator: " "))")
         guard setup.ok else {
             let missing = ["ATIB48": "4800 baud", "ATCAF0": "raw frames"].filter { setup.rejected.contains($0.key) }.values.joined(separator: " and ")
             return ProbeResult(setup: setup, identity: nil, rawReply: [],
                                reason: "This adapter can't do Subaru SSM. Its ELM327 chip did not accept \(missing.isEmpty ? "the raw 4800 baud K-line commands" : missing), which SSM needs. That is normal for clone chips. A genuine ELM327 (v1.4 or newer), a KKL cable in SSM mode, or a small dedicated adapter would work.")
         }
-        let reason = lastReply.isEmpty
-            ? "The chip can do raw K-line, but the car did not answer on any K-line protocol (ISO 9141 or KWP). On this car SSM runs on K-line pin 7; many Bluetooth adapters only wire up the CAN pins, so the K-line never reaches the ECU. OBD-II over CAN still works. For real SSM, use the KKL cable or a dedicated K-line adapter."
-            : "The chip can do raw K-line and the car sent \(lastReply.count) bytes, but not a valid SSM reply. The bytes are in the log."
-        return ProbeResult(setup: setup, identity: nil, rawReply: lastReply, reason: reason)
+        do {
+            let reply = try elm.exchangeRawKLine(try SSMPacket.initRequest(to: device).encoded(), timeout: 2.0)
+            DiagnosticLog.shared.info("ssm-elm", "SSM init reply: \(reply.hexString)")
+            if let frame = Self.firstSSMFrame(in: reply, from: device.rawValue),
+               let identity = try? ECUIdentity.parse(initReply: SSMPacket.decode(frame)) {
+                return ProbeResult(setup: setup, identity: identity, rawReply: reply,
+                                   reason: "Success. The ECU answered over SSM (ECU ID \(identity.ecuID)). This adapter can read your Subaru with SSM, wirelessly. Full SSM logging over Bluetooth can be built on this.")
+            }
+            let reason = reply.isEmpty
+                ? "The adapter is in raw SSM mode, but the car did not answer. Check the ignition is ON, and that this car speaks SSM on the K-line (mostly Subarus up to about 2014)."
+                : "The adapter is in raw SSM mode and sent \(reply.count) bytes, but the reply was not a valid SSM frame. The chip may not pass 4800 baud K-line through cleanly."
+            return ProbeResult(setup: setup, identity: nil, rawReply: reply, reason: reason)
+        } catch {
+            return ProbeResult(setup: setup, identity: nil, rawReply: [],
+                               reason: "The adapter accepted raw mode but the exchange failed: \(error.localizedDescription)")
+        }
     }
 
     /// One SSM request and its reply, once raw mode is set up. Used by a full SSM-over-Bluetooth session.
