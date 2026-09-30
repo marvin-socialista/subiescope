@@ -18,9 +18,14 @@ BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 if [ "$STRIP_DEFINITIONS" != "1" ]; then
   scripts/fetch-definitions.sh || echo "warning: no definitions bundled; the app downloads them on first launch"
 fi
-swift build -c "$CONFIG" --product SubieScope
-swift build -c "$CONFIG" --product subiescope-cli
-BIN="$(swift build -c "$CONFIG" --show-bin-path)"
+# Universal binary: Apple Silicon and Intel Macs. ARCHS=arm64 builds a faster, native-only dev build.
+ARCHS="${ARCHS:-arm64 x86_64}"
+[ -n "${ARCHS// /}" ] || { echo "ARCHS must not be empty" >&2; exit 1; }
+ARCH_FLAGS=()
+for a in $ARCHS; do ARCH_FLAGS+=(--arch "$a"); done
+swift build -c "$CONFIG" "${ARCH_FLAGS[@]}" --product SubieScope
+swift build -c "$CONFIG" "${ARCH_FLAGS[@]}" --product subiescope-cli
+BIN="$(swift build -c "$CONFIG" "${ARCH_FLAGS[@]}" --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
