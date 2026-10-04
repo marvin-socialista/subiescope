@@ -190,7 +190,12 @@ final class LogPlayback {
 /// Formats seconds as m:ss.s
 func formatLogTime(_ t: Double, decimals: Int = 1) -> String {
     guard t.isFinite else { return "–" }
-    let minutes = Int(t) / 60
-    let seconds = t - Double(minutes * 60)
-    return String(format: "%d:%0\(decimals + 3).\(decimals)f", minutes, seconds)
+    // Rounded first, so 59.96 s becomes 1:00.0 and not 0:60.0.
+    let scale = pow(10, Double(decimals))
+    let rounded = (t * scale).rounded() / scale
+    let minutes = Int(rounded) / 60
+    let seconds = rounded - Double(minutes * 60)
+    // Two digits of seconds, plus the point and the decimals when there are any.
+    let width = decimals == 0 ? 2 : decimals + 3
+    return String(format: "%d:%0\(width).\(decimals)f", minutes, seconds)
 }

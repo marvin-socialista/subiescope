@@ -205,7 +205,9 @@ public enum VirtualDyno {
                 + settings.rollingResistance * settings.massKg * 9.81
             let power = force * speed
             let omega = rpm[i] * 2 * .pi / 60
+            // An empty cell in the log is not a number, and one of those would spoil the average of its whole bin.
             let boost = c.boost.flatMap { col, units in UnitNormalizer.convert(log.values[col][rows.lowerBound + i], from: units, to: "kPa") }
+                .flatMap { $0.isFinite ? $0 : nil }
             points.append(DynoPoint(rpm: rpm[i], wheelPower: power, torque: omega > 0 ? power / omega : 0, boost: boost))
         }
         // Average into 100 rpm bins, then smooth lightly.

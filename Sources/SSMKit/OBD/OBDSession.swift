@@ -254,8 +254,15 @@ public final class OBDSession: @unchecked Sendable {
     static func spread<T>(_ items: [T]) -> [T] {
         let n = items.count
         guard n > 2 else { return items }
+        func sharesAFactor(_ a: Int, _ b: Int) -> Bool {
+            var (a, b) = (a, b)
+            while b != 0 { (a, b) = (b, a % b) }
+            return a != 1
+        }
         var stride = 13
-        while n % stride == 0 { stride += 2 }
+        // Not only "the count is a multiple of the stride": 39 items and a stride of 15 share the 3, and
+        // the walk would come back to the start after 13 items without having seen the other 26.
+        while sharesAFactor(n, stride) { stride += 2 }
         return (0..<n).map { items[($0 * stride) % n] }
     }
 

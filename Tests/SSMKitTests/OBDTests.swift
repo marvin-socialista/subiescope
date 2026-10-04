@@ -63,6 +63,48 @@ struct OBDParsingTests {
                    "49 02 04 47 39 38 30", "49 02 05 30 30 30 31"]
         #expect(ELM327.parseVIN(lines: old) == vin)
         #expect(ELM327.parseVIN(lines: ["NO DATA"]) == nil)
+        // A reply that stops right after the service and the PID is no VIN, and must not crash.
+        #expect(ELM327.parseVIN(lines: ["49 02"]) == nil)
+        #expect(ELM327.parseVIN(lines: ["49 02 01"]) == nil)
+    }
+
+    @Test func splitsAReplyIntoLinesWithLineFeedsOn() {
+        // An adapter with line feeds on ends every line in CR LF, which Swift reads as one character.
+        let text = "0100\r\n41 00 BE 3F A8 13\r\n41 00 98 18 00 01\r\n\r\n>"
+        #expect(ELM327.lines(of: text, echoOf: "0100") == ["41 00 BE 3F A8 13", "41 00 98 18 00 01"])
+        #expect(ELM327.lines(of: "0100\r41 00 BE 3F A8 13\r\r>", echoOf: "0100") == ["41 00 BE 3F A8 13"])
+        // The console shows a reply on one line, with either line end.
+        #expect(ELM327.oneLine("41 00 BE 3F A8 13\r\n\r\n>") == "41 00 BE 3F A8 13  >")
+        #expect(ELM327.oneLine("41 00 BE 3F A8 13\r\r>") == "41 00 BE 3F A8 13  >")
+    }
+
+    @Test func noDataIsRecognisedWithAndWithoutTheSpace() {
+        #expect(ELM327.isNoData(["NO DATA"]))
+        #expect(ELM327.isNoData(["SEARCHING...", "no data"]))
+        #expect(ELM327.isNoData(["NODATA"]))
+        #expect(!ELM327.isNoData(["41 0C 1A F8"]))
+    }
+
+    @Test func aLongReplyKeepsItsFramesTogether() {
+        // 130 bytes: 6 in the first frame, 7 in each one after it. The frame number is one hex digit,
+        // so after "F:" it starts again at "0:".
+        let message = (0..<130).map { UInt8($0 == 0 ? 0x62 : $0) }
+        var lines = [String(format: "%03X", message.count)]
+        var index = 0
+        var frame = 0
+        while index < message.count {
+            let size = frame == 0 ? 6 : 7
+            var slice = Array(message[index..<min(index + size, message.count)])
+            slice += [UInt8](repeating: 0xAA, count: size - slice.count)
+            lines.append(String(format: "%X: ", frame % 16) + slice.map { String(format: "%02X", $0) }.joined(separator: " "))
+            index += size
+            frame += 1
+        }
+        #expect(lines.filter { $0.hasPrefix("0:") }.count == 2)
+        #expect(ELM327.messages(from: lines) == [message])
+        // Another control unit's reply after it is still a message of its own.
+        let two = lines + ["008", "0: 62 10 20 01 02 03", "1: 04 05 AA AA AA AA AA"]
+        #expect(ELM327.messages(from: two) == [message, [0x62, 0x10, 0x20, 0x01, 0x02, 0x03, 0x04, 0x05]])
     }
 
     @Test func catalogIsConsistent() throws {
@@ -432,6 +474,14 @@ struct ExtendedValueTests {
         _ = try await session.connect()
         let found = try await session.discoverExtended().ids
         #expect(found.count == 2, "found \(found.count) of 2")
+    }
+
+    @Test func theSpreadOrderVisitsEveryValueOnce() {
+        // 39, 65, 78 and so on share a factor with the stride that used to be picked for them.
+        for count in 0...600 {
+            let order = OBDSession.spread(Array(0..<count))
+            #expect(order.count == count && Set(order).count == count, "\(count) items")
+        }
     }
 
     @Test func anEcuThatSaysNotSupportedIsKeptTalkingTo() async throws {

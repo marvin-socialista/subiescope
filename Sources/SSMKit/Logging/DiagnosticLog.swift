@@ -96,10 +96,18 @@ public final class DiagnosticLog: @unchecked Sendable {
         openIfNeeded()
     }
 
+    /// Seventeen bytes in a row that are all characters a VIN can have (digits, and capitals without I, O and Q).
+    static let vinAsBytes: String = {
+        let character = "(?:3[0-9]|4[1-8A-E]|5[02-9A])"
+        return "\\b(?:\(character) ){16}\(character)\\b"
+    }()
+
     /// Removes what would identify the person: their home folder name and anything shaped like a VIN.
     func scrub(_ text: String) -> String {
         var result = text.replacingOccurrences(of: home, with: "~")
         result = result.replacingOccurrences(of: #"\b[A-HJ-NPR-Z0-9]{17}\b"#, with: "<VIN>", options: .regularExpression)
+        // The same seventeen characters as bytes in a line of traffic ("4A 46 31 ..."): how an SSM car's VIN travels.
+        result = result.replacingOccurrences(of: Self.vinAsBytes, with: "<VIN>", options: .regularExpression)
         return result
     }
 

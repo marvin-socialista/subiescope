@@ -92,13 +92,19 @@ public final class ELM327 {
         }
         // The VIN identifies the car, so it stays out of the console and the log.
         let asksVIN = command == "0902" || command.hasPrefix("22F190")
-        let shown = asksVIN ? "(VIN reply hidden)" : text.replacingOccurrences(of: "\r", with: " ").trimmingCharacters(in: .whitespaces)
+        let shown = asksVIN ? "(VIN reply hidden)" : Self.oneLine(text)
         traffic?(.received, shown)
         return Self.lines(of: text, echoOf: command)
     }
 
+    /// A reply as one line for the console: every line end becomes a space.
+    static func oneLine(_ text: String) -> String {
+        String(text.map { $0.isNewline ? " " : $0 }).trimmingCharacters(in: .whitespaces)
+    }
+
     static func lines(of text: String, echoOf command: String) -> [String] {
-        text.split(whereSeparator: { $0 == "\r" || $0 == "\n" })
+        // Not `== "\r" || == "\n"`: an adapter with line feeds on sends CR LF, and that pair is one Character.
+        text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && $0 != command && $0 != ">" }
     }
@@ -214,7 +220,7 @@ public final class ELM327 {
                 if answered.isEmpty {
                     // "NO DATA" is a legitimate answer (nothing is available right now); anything else is a batch
                     // problem, and the values are fetched one by one right away so this round is not lost.
-                    if !lines.joined().uppercased().filter({ !$0.isWhitespace }).contains("NODATA") {
+                    if !Self.isNoData(lines) {
                         recordBatchFailure(Self.errorText(in: lines) ?? "unreadable answer")
                         try readSingly(chunk, into: &result)
                     }
@@ -394,7 +400,7 @@ public final class ELM327 {
 
     public func readVIN() throws -> String? {
         let lines = try send("0902", timeout: 6)
-        if lines.joined().uppercased().contains("NODATA") { return nil }
+        if Self.isNoData(lines) { return nil }
         return Self.parseVIN(lines: lines)
     }
 
@@ -410,7 +416,7 @@ public final class ELM327 {
     public func readTroubleCodes() throws -> TroubleCodes {
         func codes(_ request: String, response: UInt8) throws -> [String] {
             let lines = try send(request, timeout: 6)
-            if lines.joined().uppercased().contains("NODATA") { return [] }
+            if Self.isNoData(lines) { return [] }
             if let error = Self.errorText(in: lines) { throw OBDError.adapterError(error) }
             return Self.parseTroubleCodes(lines: lines, response: response)
         }
@@ -476,9 +482,13 @@ public final class ELM327 {
         return errorMarkers.first { compact.contains($0) }.map { _ in text.capitalized }
     }
 
+    /// "NO DATA": the car has nothing to say to this request. The adapter writes it with a space.
+    static func isNoData(_ lines: [String]) -> Bool {
+        lines.joined().uppercased().filter { !$0.isWhitespace }.contains("NODATA")
+    }
+
     static func throwIfError(_ lines: [String]) throws {
-        let compact = lines.joined().uppercased().filter { !$0.isWhitespace }
-        if compact.contains("NODATA") { throw OBDError.noData }
+        if isNoData(lines) { throw OBDError.noData }
         if let text = errorText(in: lines) { throw OBDError.adapterError(text) }
     }
 
@@ -490,6 +500,8 @@ public final class ELM327 {
 
     /// Splits a reply into messages, one per control unit. A CAN multi-frame message
     /// arrives as a byte count line ("00A") and numbered frames ("0:", "1:" ...) that must be joined.
+    /// The frame number is one hex digit, so after "F:" it starts again at "0:": a "0:" without a byte
+    /// count line of its own, while the message is still short of its length, belongs to that message.
     static func messages(from lines: [String]) -> [[UInt8]] {
         var result: [[UInt8]] = []
         var expected: Int?
@@ -503,7 +515,9 @@ public final class ELM327 {
             let bytes = hexBytes(of: line)
             guard !bytes.isEmpty else { continue }
             let frame = compact.dropFirst().first == ":" ? compact.first.flatMap { Int(String($0), radix: 16) } : nil
-            if let frame, frame > 0, !result.isEmpty {
+            let wrapped = frame == 0 && expected == nil && !result.isEmpty
+                && (lengths[lengths.count - 1].map { result[result.count - 1].count < $0 } ?? false)
+            if let frame, frame > 0 || wrapped, !result.isEmpty {
                 result[result.count - 1] += bytes
             } else {
                 result.append(bytes)
@@ -540,7 +554,7 @@ public final class ELM327 {
     static func parseVIN(lines: [String]) -> String? {
         var data: [UInt8] = []
         for var message in messages(from: lines) {
-            if message.starts(with: [0x49, 0x02]) { message.removeFirst(3) }   // service, PID, item counter
+            if message.starts(with: [0x49, 0x02]) { message.removeFirst(min(3, message.count)) }   // service, PID, item counter
             data.append(contentsOf: message)
         }
         let text = String(decoding: data.filter { $0 >= 0x30 && $0 < 0x7F }, as: UTF8.self)

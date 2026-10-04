@@ -80,6 +80,8 @@ struct WidebandReaderTests {
         #expect(reader.lambda() == nil)
         reader.start()
         try await wait { reader.lambda() != nil }
+        // The state follows the first reading within a moment, on the reader's own thread.
+        try await wait { !states.all.isEmpty }
         #expect(reader.state == .reading(baud: 9600))
         #expect(states.all == [.reading(baud: 9600)])
         #expect(abs(try #require(reader.lambda()) - 1.0) < 0.001)

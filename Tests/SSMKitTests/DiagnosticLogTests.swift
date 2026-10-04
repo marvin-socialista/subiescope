@@ -33,6 +33,17 @@ struct DiagnosticLogTests {
         #expect(text.contains("<VIN>"))
     }
 
+    @Test func removesAVINThatTravelsAsBytes() {
+        // An SSM car answers its VIN as seventeen bytes; the traffic kept for a report shows them as hex.
+        let log = DiagnosticLog(directory: tempDirectory())
+        let vin = Array("JF1GH7LA58G012345".utf8).map { String(format: "%02X", $0) }.joined(separator: " ")
+        let line = log.scrub("received 80 F0 10 12 E8 \(vin) 5C")
+        #expect(line == "received 80 F0 10 12 E8 <VIN> 5C")
+        // Ordinary traffic stays as it is: these bytes are no characters of a VIN.
+        let traffic = "received 80 F0 10 27 E8 44 84 7D 83 2B 20 C4 47 0A C0 2C B0 0F 5B 27 00 7F 04 3F 80 00 00"
+        #expect(log.scrub(traffic) == traffic)
+    }
+
     @Test func rotatesAndKeepsAFewFiles() throws {
         let directory = tempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
