@@ -89,6 +89,8 @@ public enum ParameterKind: String, Sendable, CaseIterable {
     case switchBit
     /// Computed from other parameters.
     case calculated
+    /// Not read from the car: a separate gauge with its own connection (a wideband).
+    case external
 }
 
 /// A loggable value, independent of where the definition came from.

@@ -212,7 +212,8 @@ struct PollPlan {
         }
 
         let outputIDs = Set(items.map { $0.parameter.id + "|" + $0.conversion.units })
-        for item in items where item.parameter.kind != .calculated {
+        // A separate gauge is not read from the ECU: its reading is added to the samples afterwards.
+        for item in items where item.parameter.kind != .calculated && item.parameter.kind != .external {
             addReadable(item.parameter, item.conversion, output: true)
         }
         for item in items where item.parameter.kind == .calculated {

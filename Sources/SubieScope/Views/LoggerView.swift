@@ -79,7 +79,7 @@ struct ParameterBrowser: View {
     }
 
     private var speedHint: String {
-        let bytes = model.parameters.filter { model.loggedIDs.union(model.dashboardIDs).contains($0.id) }
+        let bytes = model.parameters.filter { $0.kind != .external && model.loggedIDs.union(model.dashboardIDs).contains($0.id) }
             .reduce(0) { $0 + max(1, $1.addresses.count) }
         let rate = model.samplesPerSecond > 0 ? String(format: " · %.1f samples/s", model.samplesPerSecond) : ""
         return "\(bytes) addresses polled\(rate). Fewer parameters log faster."
@@ -91,7 +91,8 @@ struct ParameterBrowser: View {
                 && (query.isEmpty || p.name.localizedCaseInsensitiveContains(query) || p.id.localizedCaseInsensitiveContains(query))
         }
         let groups: [(String, ParameterKind)] = [
-            ("Standard", .standard), ("ECU Specific (Extended)", .extended), ("Calculated", .calculated), ("Switches", .switchBit),
+            ("Wideband Gauge", .external), ("Standard", .standard), ("ECU Specific (Extended)", .extended),
+            ("Calculated", .calculated), ("Switches", .switchBit),
         ]
         return groups.map { title, kind in (title, filtered.filter { $0.kind == kind }) }.filter { !$0.items.isEmpty }
     }

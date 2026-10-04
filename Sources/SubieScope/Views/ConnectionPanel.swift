@@ -396,6 +396,15 @@ struct ConnectionPanel: View {
                 }
             }
 
+            if model.widebandOn {
+                PanelSection(title: "Wideband gauge", symbol: "gauge.with.needle") {
+                    Text(model.widebandStatusText)
+                        .font(.callout)
+                        .foregroundStyle(model.widebandHasProblem ? .orange : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             if case .failed(let message) = model.connection {
                 Label {
                     Text(message).fixedSize(horizontal: false, vertical: true)

@@ -28,6 +28,7 @@ SubieScope talks to the engine ECU over Subaru's SSM protocol, the same one the 
 - **Troubleshooting**: 17 guided tests that tell you what to do, coach you live ("a bit more throttle", "hold 2,500 rpm") and explain the result in plain language:
   - *In the garage*: front A/F sensor, rear O2 sensor & catalyst, MAF sensor, idle quality & misfires, battery & charging, accelerator pedal sensor, temperature sensors, warm-up & thermostat, overheating & radiator fan
   - *On the road*: knock check (how much knock, where and why), full-throttle pull (knock, boost, fueling), AVCS, fuel trims while driving, catalyst efficiency (P0420), intercooler heat soak, throttle response, misfire hunt
+- **Wideband gauge** (experimental): have an AEM wideband in the car? SubieScope reads it at the same time, so its air/fuel reading is on the dashboard and in the same log as rpm, boost and knock. See [below](#aem-wideband-gauge-experimental).
 - **Trouble codes**: read current and stored codes with an explanation, possible causes and fixes for each code, copy them or save them as a PDF or text file, and clear the ECU memory.
 - **Log playback**: replay any log on the gauges, scrub through it and hover the charts to see every value at that moment. It also opens RomRaider logs, including ones written by Dutch or German Windows installs.
 - **Virtual dyno**: turns a full-throttle pull into wheel horsepower and torque curves, tells you whether the pull was good or should be redone, and compares pulls.
@@ -68,6 +69,7 @@ OBD-II mode is new and has been tested against a simulated adapter and car. Repo
   - A Subaru that speaks SSM over K-line (see below).
 - For **OBD-II**: an ELM327 adapter with **Bluetooth 4.0 (BLE)**, such as the Vgate iCar Pro BLE 4.0. The first time, macOS asks whether SubieScope may use Bluetooth.
   - **USB and Wi-Fi ELM327 adapters** are experimental, see [below](#usb-and-wi-fi-adapters-experimental). Bluetooth Classic adapters are not supported.
+- Optional, to log an **AEM wideband gauge** too: a USB to RS-232 serial adapter for the gauge, see [below](#aem-wideband-gauge-experimental).
 
 ## Supported cars
 
@@ -118,7 +120,7 @@ The app bundle also contains `subiescope-cli`, which is handy at the car or for 
 /Applications/SubieScope.app/Contents/MacOS/subiescope-cli codes     # read trouble codes
 ```
 
-Add `--demo` to any command to use the simulated car. `subiescope-cli demo --obd` runs a simulated OBD-II adapter as a USB port and as a Wi-Fi address on your own Mac, for trying the app's USB and Wi-Fi connections without the hardware.
+Add `--demo` to any command to use the simulated car. `subiescope-cli demo --obd` runs a simulated OBD-II adapter as a USB port and as a Wi-Fi address on your own Mac, for trying the app's USB and Wi-Fi connections without the hardware. It also runs a simulated AEM wideband gauge on a port of its own.
 
 ### Talking to the running app (developer)
 
@@ -155,6 +157,19 @@ Besides Bluetooth 4.0, OBD-II mode can use an ELM327 adapter with a **USB cable*
 
 Both are new and have been tested against a simulated adapter only, not against real hardware. If yours does not work, **Help > Send Diagnostic Report…** shows what the adapter answered, and reports that it does work are just as welcome. A VAG KKL cable is not an ELM327 adapter: it only works in Subaru SSM mode.
 
+## AEM wideband gauge (experimental)
+
+Have an AEM wideband air/fuel gauge in the car? SubieScope can read it at the same time as the car, so its reading sits on the Dashboard, in the Logger and in the same rows of your CSV log as rpm, boost and knock. It works with the SSM cable and with OBD-II. RomRaider has the same idea and calls it an external sensor.
+
+- **Which gauges:** the X-Series UEGO gauge (30-0300) and the older UEGO gauges (30-4100, 30-4110), through their serial output. The gauge sends what its display shows, so set it to AFR or lambda: either works. AEM controllers that send lambda at 19200 baud are recognised too. Other brands are not supported yet.
+- **What you need:** a **USB to RS-232 serial adapter** for the gauge alone. The cable or adapter that goes to the car can't be shared. An adapter with an FTDI chip needs no driver.
+- **Wiring:** the gauge's **blue** wire is its serial output. Connect it to pin 2 (receive) of the adapter's 9-pin plug, and pin 5 (ground) to the gauge's ground.
+- **In the app:** turn on **Settings > Wideband > Log an AEM wideband gauge** and pick the adapter's port. SubieScope starts listening when you connect to the car. "AEM Wideband A/F" appears at the top of the Logger, already ticked; add it to the Dashboard with the gauge button, and choose AFR or lambda like for any other value.
+
+The gauge sends about ten readings per second, and the newest one is added to every sample from the car. If the gauge stops sending (ignition off, a loose wire), the log shows a gap instead of a number that no longer moves. The connection panel and Settings > Wideband tell you whether readings are coming in.
+
+This is new and has been tested against a simulated gauge only, not against a real one. The demo car has a simulated gauge in its exhaust, so you can see how it works without any hardware: turn the option on and connect to the demo car. If yours does not work, **Help > Send Diagnostic Report…** shows what the gauge sent, and reports that it does work are just as welcome.
+
 ## When something goes wrong
 
 SubieScope keeps a log of what it does in `~/Library/Logs/SubieScope/`. It leaves out your name (your home folder shows as `~`) and anything shaped like a VIN, and it never leaves your Mac by itself. If the app crashes, it says so the next time it starts, and starts without connecting automatically. **Help > Send Diagnostic Report…** bundles the log, your Mac model and any macOS crash reports into one file you can email to the developer or attach to an [issue](https://github.com/marvin-socialista/subiescope/issues). **Help > Save Diagnostic Report…** saves it instead.
@@ -185,7 +200,7 @@ How the code is organised:
 
 | Path | What's there |
 |---|---|
-| `Sources/SSMKit` | The engine, with no UI: serial port, SSM2 protocol, RomRaider definitions parser, polling and fast-poll session, CSV logs, troubleshooting tests, virtual dyno, and the simulated ECU |
+| `Sources/SSMKit` | The engine, with no UI: serial port, SSM2 protocol, RomRaider definitions parser, polling and fast-poll session, CSV logs, the wideband gauge reader, troubleshooting tests, virtual dyno, and the simulated ECU |
 | `Sources/SubieScope` | The SwiftUI app |
 | `Sources/SubieScopeCLI` | `subiescope-cli` |
 | `Tests/SSMKitTests` | Tests, including an end-to-end run over a pseudo-terminal and every troubleshooting test against simulated faults |
@@ -195,7 +210,7 @@ RomRaider's definitions file has no explicit license, so it isn't in this reposi
 ## Credits
 
 - [FreeSSM](https://github.com/Comer352L/FreeSSM) by Comer352L: SSM2 diagnostics, clear-memory procedure, trouble code layout and engine details.
-- [RomRaider](https://github.com/RomRaider/RomRaider) and its community: the SSM logger protocol, fast polling and the logger definitions with extended parameters for hundreds of ECUs.
+- [RomRaider](https://github.com/RomRaider/RomRaider) and its community: the SSM logger protocol, fast polling, the logger definitions with extended parameters for hundreds of ECUs, and the serial formats of the AEM wideband gauges.
 - [OBDb](https://github.com/OBDb) (Subaru signal sets for Impreza, WRX, Forester, Outback and Crosstrek): the Mode 22 extended value definitions. That data is licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); the bundled file `Sources/SSMKit/Resources/ExtendedPIDs/subaru_mode22.json` keeps that license and is generated by `scripts/generate-extended-pids.py`.
 - Subaru Diesel Crew ([ParsePID](https://github.com/giotec/ParsePID), GPLv3): how Subaru ECUs list the Mode 22 values they support, and where they report their ROM ID.
 

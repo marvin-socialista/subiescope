@@ -64,6 +64,9 @@ public final class DemoECU: @unchecked Sendable {
         ecu.stop()
     }
 
+    /// The simulated engine behind the ECU, for a simulated gauge that sits in the same exhaust.
+    public var world: DemoWorld { memory.world }
+
     /// What the demo car is doing; nil = the default drive loop.
     public func setScenario(_ scenario: DemoScenario?) { memory.world.setScenario(scenario) }
     public func setFault(_ fault: DemoFault) { memory.world.setFault(fault) }
@@ -83,6 +86,7 @@ public final class DemoWorld: @unchecked Sendable {
     private var coolant: Double = 88
     private var fanOn = false
     private var lambdaSensor: Double = 1.0
+    private var exhaust: Double = 1.0
     private var rearO2: Double = 0.65
     private var rough: [Double] = [0, 0, 0, 0]
     private var knockEvents = 0.0
@@ -109,6 +113,13 @@ public final class DemoWorld: @unchecked Sendable {
     public var currentFault: DemoFault {
         lock.lock(); defer { lock.unlock() }
         return fault
+    }
+
+    /// The mixture in the exhaust at the last sample, as lambda: what a separate wideband gauge reads,
+    /// whatever the car's own front sensor reports.
+    public var exhaustLambda: Double {
+        lock.lock(); defer { lock.unlock() }
+        return exhaust
     }
 
     /// Engine state at time `t` (seconds, monotonic).
@@ -296,6 +307,8 @@ public final class DemoWorld: @unchecked Sendable {
         // Actual mixture and what the front sensor reports
         var mixture = s.fuelCut ? 1.99 : (closedLoop ? 1.0 + 0.012 * sin(t * 2 * .pi * 1.1) : s.mixture)
         if fault == .leanAtWOT && s.throttle > 85 && s.boost > 40 { mixture = 0.9 }
+        // A wideband gauge in the exhaust follows the real mixture quickly, and sees plain air with the engine off.
+        exhaust += ((s.running ? mixture : 1.99) - exhaust) * Swift.min(1, dt / 0.08)
         if !s.running { mixture = 1.0 }
         switch fault {
         case .deadFrontSensor:

@@ -68,6 +68,40 @@ struct SettingsView: View {
             .tabItem { Label("General", systemImage: "gearshape") }
 
             Form {
+                Toggle("Log an AEM wideband gauge (experimental)", isOn: $model.widebandOn)
+                Text("Reads a separate AEM wideband air/fuel gauge through its serial output and adds it to the Dashboard, the Logger and your recorded logs, next to the values from the car. For the X-Series (30-0300) and the UEGO gauges (30-4100, 30-4110), set to AFR or lambda. Not tested with a real gauge yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if model.widebandOn {
+                    Picker("Gauge port", selection: $model.widebandPortID) {
+                        Text("Choose a port").tag(String?.none)
+                        // A saved port that is not plugged in right now still needs its row.
+                        if let saved = model.widebandPortID, !model.widebandPorts.contains(where: { $0.path == saved }) {
+                            Text("\((saved as NSString).lastPathComponent) (not plugged in)").tag(Optional(saved))
+                        }
+                        ForEach(model.widebandPorts) { port in
+                            Text(port.displayName).tag(Optional(port.path))
+                        }
+                    }
+                    .disabled(model.isDemo && model.connection.isConnected)
+                    Text("The gauge needs a USB to RS-232 serial adapter of its own: the cable or adapter that goes to the car can't be shared. Connect the gauge's blue wire to pin 2 (receive) of the adapter's 9-pin plug, and pin 5 (ground) to the gauge's ground.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    LabeledContent("Status") {
+                        Text(model.widebandStatusText)
+                            .foregroundStyle(model.widebandHasProblem ? .orange : .secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("The gauge is in the Logger as \"AEM Wideband A/F\", already ticked. Add it to the Dashboard from there with the gauge button.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .tabItem { Label("Wideband", systemImage: "gauge.with.needle") }
+            .onAppear { model.refreshPorts() }
+
+            Form {
                 if let defs = model.definitions {
                     LabeledContent("Loaded", value: defs.sourceURL.lastPathComponent)
                     LabeledContent("Version", value: defs.version ?? "?")

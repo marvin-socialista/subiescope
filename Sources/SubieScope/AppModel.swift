@@ -143,6 +143,28 @@ final class AppModel {
     /// Set while a whole selection is swapped (a mode change), so half of it is never saved.
     @ObservationIgnored var suppressPersist = false
 
+    // MARK: Wideband gauge
+    /// A separate AEM wideband gauge on its own serial port, logged next to the car's values (experimental).
+    var widebandOn: Bool = UserDefaults.standard.bool(forKey: "widebandOn") {
+        didSet {
+            UserDefaults.standard.set(widebandOn, forKey: "widebandOn")
+            widebandSettingChanged()
+        }
+    }
+    /// The serial port the gauge's output wire is on.
+    var widebandPortID: String? = UserDefaults.standard.string(forKey: "widebandPort") {
+        didSet {
+            UserDefaults.standard.set(widebandPortID, forKey: "widebandPort")
+            if connection.isConnected { startWideband() }
+        }
+    }
+    /// What the gauge's listener is doing. nil while it is not running.
+    var widebandState: WidebandReader.State?
+    @ObservationIgnored var widebandReader: WidebandReader?
+    @ObservationIgnored var simulatedWideband: SimulatedWideband?
+    /// The simulated engine of the demo car that is connected, in either mode.
+    var demoWorld: DemoWorld? { demoECU?.world ?? simulatedELM?.world }
+
     // MARK: Updates
     /// A newer release on GitHub: shows the update popup.
     var updateOffer: UpdateRelease?
@@ -324,8 +346,9 @@ final class AppModel {
     private func applyDefinitions() {
         guard let definitions else { return }
         let set = definitions.parameterSet(for: identity)
-        parameters = set.parameters
-        parametersByID = Dictionary(set.parameters.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let list = set.parameters + widebandParameters
+        parameters = list
+        parametersByID = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         codeDefinitions = set.diagnosticCodes
     }
 
@@ -369,12 +392,12 @@ final class AppModel {
         if mode == .obd {
             let extra = ["Mass Airflow", "A/F Sensor #1", "Battery Voltage", "Absolute Engine Load", "Accelerator Pedal Angle",
                          "Commanded Lambda", "Engine Oil Temperature"]
-            return defaultDashboard() + extra.compactMap { resolve($0)?.id }
+            return defaultDashboard() + extra.compactMap { resolve($0)?.id } + widebandParameters.map(\.id)
         }
         let extra = ["Vehicle Speed", "Engine Load (Relative)", "Mass Airflow", "A/F Correction #1", "A/F Learning #1",
                      "Knock Correction Advance", "Primary Wastegate Duty Cycle", "Fuel Injector #1 Pulse Width",
                      "Accelerator Pedal Angle", "Gear Position", "Target Boost"]
-        return defaultDashboard() + extra.compactMap { resolve($0)?.id }
+        return defaultDashboard() + extra.compactMap { resolve($0)?.id } + widebandParameters.map(\.id)
     }
 
     /// Several definitions exist for the same value (for 16-bit vs 32-bit ECUs, or
@@ -571,6 +594,7 @@ final class AppModel {
             remapSelections()
             connection = .connected
             resetLive()
+            startWideband()
             startPolling()
             await readECUDetails()
             await readTroubleCodes()
@@ -597,6 +621,7 @@ final class AppModel {
         demoECU?.stop()
         demoECU = nil
         closeOBD()
+        stopWideband()
         remoteHold = false
         if connection == .connected { log("Disconnected") }
         connection = .disconnected
@@ -664,6 +689,8 @@ final class AppModel {
     }
 
     func ingest(_ sample: Sample) {
+        var sample = sample
+        addWideband(to: &sample)
         pollError = nil
         latest.merge(sample.values) { _, new in new }
         lastRoundTrip = sample.roundTrip
@@ -706,6 +733,7 @@ final class AppModel {
             session?.close()
             session = nil
             closeOBD()
+            stopWideband()
         }
     }
 
@@ -859,7 +887,7 @@ final class AppModel {
                 playbackError = "\(url.lastPathComponent) contains no log rows."
                 return
             }
-            let all = definitions?.parameterSet(for: nil).parameters ?? []
+            let all = (definitions?.parameterSet(for: nil).parameters ?? []) + [AEMWideband.definition]
             let playback = LogPlayback(url: url, log: log, definitions: all)
             playback.onPlayhead = { [weak self] t in self?.applyPlayback(at: t) }
             self.playback = playback

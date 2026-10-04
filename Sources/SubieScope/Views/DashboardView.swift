@@ -305,6 +305,7 @@ extension ParameterKind {
         case .extended: return "Extended (ECU specific)"
         case .switchBit: return "Switch"
         case .calculated: return "Calculated"
+        case .external: return "Wideband gauge"
         }
     }
 }

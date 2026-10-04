@@ -216,6 +216,7 @@ extension AppModel {
             applyOBDParameters()
             connection = .connected
             resetLive()
+            startWideband()
             startPolling()
             await readOBDTroubleCodes()
             if extendedValuesOn { Task { await discoverExtendedValues() } }
@@ -288,6 +289,7 @@ extension AppModel {
         var list = obdInfo.map { OBDParameters.parameters(supported: $0.supportedPIDs) } ?? OBDParameters.allParameters
         // Extended values only appear once the car has shown it answers them.
         if extendedValuesOn { list += ExtendedParameters.definitions(for: extendedIDs) }
+        list += widebandParameters
         parameters = list
         parametersByID = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         codeDefinitions = []
