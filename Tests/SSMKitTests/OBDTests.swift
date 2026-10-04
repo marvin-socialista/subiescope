@@ -335,6 +335,13 @@ final class FatalBox: @unchecked Sendable {
     var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
 }
 
+final class TrafficBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [String] = []
+    func add(_ line: String) { lock.lock(); lines.append(line); lock.unlock() }
+    var all: [String] { lock.lock(); defer { lock.unlock() }; return lines }
+}
+
 @Suite("OBD-II extended values (Mode 22)", .serialized)
 struct ExtendedValueTests {
     /// A newer Subaru: the engine ECU on 7A2 answers intake VVT (AVCS) left and right, and nothing else.
@@ -390,7 +397,7 @@ struct ExtendedValueTests {
         }
         defer { session.close() }
         _ = try await session.connect()
-        let found = try await session.discoverExtended()
+        let found = try await session.discoverExtended().ids
         #expect(found == Set(known.filter { answered.contains($0.didValue) }.map(\.id)))
         // The adapter must be back to normal OBD-II afterwards.
         let rpm = try await session.run { try $0.readPID(0x0C) }
@@ -409,7 +416,8 @@ struct ExtendedValueTests {
         }
         #expect(requests < 20, "it should stop after a few silent requests, used \(requests)")
         let discovered = try await session.discoverExtended()
-        #expect(discovered.isEmpty)
+        #expect(discovered.ids.isEmpty)
+        #expect(discovered.romID == nil)
     }
 
     @Test func aFewScatteredAnswersAreNotMissedByTheEarlyExit() async throws {
@@ -422,7 +430,7 @@ struct ExtendedValueTests {
         }
         defer { session.close() }
         _ = try await session.connect()
-        let found = try await session.discoverExtended()
+        let found = try await session.discoverExtended().ids
         #expect(found.count == 2, "found \(found.count) of 2")
     }
 
@@ -434,8 +442,93 @@ struct ExtendedValueTests {
         }
         defer { session.close() }
         _ = try await session.connect()
-        let found = try await session.discoverExtended()
+        let found = try await session.discoverExtended().ids
         #expect(found.contains("X7A2_10B4"))
+    }
+
+    /// An ECU with "supported" lists like the 2014 Forester in the Subaru Diesel Crew data: 1000, 1020 ... up to
+    /// 12A0, plus values that answer. `listed` is what the lists claim, `answering` what really answers.
+    static func listingResponder(listed: Set<UInt16>, answering: Set<UInt16>, romID: [UInt8]? = nil) -> @Sendable (String, UInt16) -> [UInt8]? {
+        { header, did in
+            guard header == "7A2" else { return nil }
+            if did == 0xF182 { return romID }
+            if did % 0x20 == 0, (0x1000...0x12A0).contains(did) { return SimulatedELM.supportList(base: did, of: listed, lastList: 0x12A0) }
+            return answering.contains(did) ? [0x10] : nil
+        }
+    }
+
+    @Test func aSupportListSaysWhichIdentifiersFollow() {
+        // The first list of the 2014 Forester: FF C0 00 0D means 1001 to 100A, 101D, 101E and "1020 follows".
+        let dids: Set<UInt16> = Set((0x1001...0x100A).map { UInt16($0) }).union([0x101D, 0x101E])
+        #expect(SimulatedELM.supportList(base: 0x1000, of: dids, lastList: 0x12A0) == [0xFF, 0xC0, 0x00, 0x0D])
+        #expect(SimulatedELM.supportList(base: 0x12A0, of: [0x12A1, 0x12A2], lastList: 0x12A0) == [0xC0, 0x00, 0x00, 0x00])
+    }
+
+    @Test func theCarsOwnListsShortenTheSearch() async throws {
+        let known = ExtendedParameters.catalog.filter { $0.header == "7A2" }
+        let inLists = known.filter { (0x1001...0x12C0).contains($0.didValue) }.sorted { $0.didValue < $1.didValue }
+        let outside = known.filter { !(0x1001...0x12C0).contains($0.didValue) }
+        #expect(inLists.count > 40 && outside.count > 5)
+        let supported = Set(inLists.enumerated().filter { $0.offset % 4 == 0 }.map(\.element.didValue))
+        // Two values the car has and SubieScope cannot name, and one outside the lists that answers anyway.
+        let unnamed: [UInt16] = [0x1003, 0x12B7]
+        #expect(Set(known.map(\.didValue)).isDisjoint(with: unnamed))
+        let far = try #require(outside.first { $0.didValue > 0x12C0 }).didValue
+        let (session, _) = makeSession {
+            $0.extendedResponder = Self.listingResponder(listed: supported.union(unnamed), answering: supported.union([far]),
+                                                         romID: [0x5A, 0x04, 0x78, 0x42, 0x07])
+        }
+        defer { session.close() }
+        _ = try await session.connect()
+        let before = try await session.run { $0.requestCount }
+        let found = try await session.discoverExtended()
+        let used = try await session.run { $0.requestCount } - before
+        #expect(found.ids == Set(known.filter { supported.contains($0.didValue) || $0.didValue == far }.map(\.id)))
+        #expect(found.unnamed == ["7A2": unnamed])
+        #expect(found.unnamedCount == 2)
+        #expect(found.romID == "5A04784207")
+        // 22 lists and the listed values instead of every known value: well under the catalog size for both ECUs.
+        #expect(used < ExtendedParameters.catalog.count, "used \(used) requests")
+        // The adapter must be back to normal OBD-II afterwards.
+        let rpm = try await session.run { try $0.readPID(0x0C) }
+        #expect(rpm.count == 2)
+    }
+
+    @Test func listsThatLeaveOutAnsweringValuesAreNotTrusted() async throws {
+        // The lists claim nothing is supported, yet the values answer: the lists mean something else on this
+        // car, so every known value is asked as before and nothing is reported as "listed".
+        let known = ExtendedParameters.catalog.filter { $0.header == "7A2" }
+        let answering = Set(known.map(\.didValue))
+        let (session, _) = makeSession { $0.extendedResponder = Self.listingResponder(listed: [], answering: answering) }
+        defer { session.close() }
+        _ = try await session.connect()
+        let found = try await session.discoverExtended()
+        #expect(found.ids == Set(known.map(\.id)))
+        #expect(found.unnamed.isEmpty)
+    }
+
+    @Test func theDemoCarListsItsExtendedValuesAndReportsItsROMID() async throws {
+        let (session, sim) = makeSession()
+        sim.enableDemoExtended()
+        defer { session.close() }
+        _ = try await session.connect()
+        let found = try await session.discoverExtended()
+        #expect(found.ids == ["X7A2_10B4", "X7A2_10B5", "X7A2_10AC", "X7A2_10BE", "X7A2_11D0"])
+        #expect(found.romID == DemoECU.identity.romID.map { String(format: "%02X", $0) }.joined())
+        #expect(found.unnamed.isEmpty, "the demo car should not ask people for reports")
+    }
+
+    @Test func theVINStaysOutOfTheConsoleInMode22Too() async throws {
+        let (session, _) = makeSession {
+            $0.extendedResponder = { _, did in did == 0xF190 ? Array("JF1GRBKH38G012345".utf8) : nil }
+        }
+        defer { session.close() }
+        _ = try await session.connect()
+        let shown = TrafficBox()
+        session.elm.traffic = { direction, text in if direction == .received { shown.add(text) } }
+        _ = try await session.discoverExtended()
+        #expect(shown.all.contains("(VIN reply hidden)"))
+        #expect(!shown.all.contains { $0.contains("4A 46 31") || $0.contains("4A4631") }, "the VIN bytes must not be shown")
     }
 
     @Test func pollingReadsExtendedValuesNextToTheStandardOnes() async throws {

@@ -126,6 +126,8 @@ final class AppModel {
     }
     /// IDs of the extended values this car answered, and a sentence about how the search went.
     var extendedIDs: Set<String> = []
+    /// Everything the search found: also the ECU's ROM ID and the values the car lists that have no name yet.
+    var extendedDiscovery: ExtendedDiscovery?
     var extendedState: String?
     var extendedSearching = false
     /// Names of adapters seen while scanning, by identifier.

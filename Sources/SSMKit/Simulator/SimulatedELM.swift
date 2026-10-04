@@ -71,13 +71,26 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         lock.lock(); closed = true; lock.unlock()
     }
 
+    /// The four bytes an ECU answers for one of its "supported" lists (1000, 1020 ...): one bit for each of the
+    /// 32 identifiers after `base`, the last one set when another list follows.
+    public static func supportList(base: UInt16, of dids: Set<UInt16>, lastList: UInt16) -> [UInt8] {
+        var mask = [UInt8](repeating: 0, count: 4)
+        for bit in 0..<32 where dids.contains(base + 1 + UInt16(bit)) { mask[bit / 8] |= 0x80 >> UInt8(bit % 8) }
+        if base < lastList { mask[3] |= 0x01 }
+        return mask
+    }
+
     /// Makes the demo car answer a few extended (Mode 22) values like a newer Subaru does: intake VVT (AVCS)
     /// angles, primary boost control, the A/F sensor and the knocking signal, moving with the demo drive.
+    /// It also lists them as supported and reports its ROM ID.
     public func enableDemoExtended() {
         let start = self.start
         let world = self.world
+        let values: Set<UInt16> = [0x10B4, 0x10B5, 0x10AC, 0x10BE, 0x11D0]
         extendedResponder = { header, did in
             guard header == "7A2" else { return nil }
+            if did == 0xF182 { return DemoECU.identity.romID }
+            if did % 0x20 == 0, (0x1000...0x11C0).contains(did) { return Self.supportList(base: did, of: values, lastList: 0x11C0) }
             let w = world.sample(at: Date().timeIntervalSince(start))
             let load = min(1, max(0, (w["load"] ?? 0) / 40))
             let rpm = w["rpm"] ?? 800

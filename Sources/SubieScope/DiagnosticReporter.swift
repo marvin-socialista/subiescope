@@ -15,6 +15,13 @@ enum DiagnosticReporter {
                 lines.append("Bus protocol: \(info.protocolName.isEmpty ? "unknown" : info.protocolName)")
                 lines.append("Supported values: \(info.supportedPIDs.count)")
             }
+            if let found = model.extendedDiscovery {
+                lines.append("ECU ID (ROM ID): \(found.romID ?? "not reported")")
+                lines.append("Extended values answered: \(found.ids.count)")
+                for (ecu, identifiers) in found.unnamed.sorted(by: { $0.key < $1.key }) {
+                    lines.append("Listed by \(ecu) without a definition (\(identifiers.count)): \(ExtendedDiscovery.hex(identifiers))")
+                }
+            }
             lines.append("Bluetooth: \(model.bleStatus)")
         } else {
             lines.append("Cable: \(model.isDemo ? "simulated" : model.selectedPortLabel)")

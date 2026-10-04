@@ -19,6 +19,7 @@ struct ECUInfoView: View {
             Section("Car") {
                 if let info = model.obdInfo {
                     row("VIN", info.vin ?? "Not reported by this car", mono: info.vin != nil)
+                    if let rom = model.extendedDiscovery?.romID { row("ECU ID", rom, mono: true) }
                     row("Standard values supported", "\(info.supportedPIDs.filter { $0 % 0x20 != 0 }.count)")
                     if let volts = info.voltage { row("Battery voltage at the port", String(format: "%.1f V", volts)) }
                 } else {
@@ -44,7 +45,7 @@ struct ECUInfoView: View {
                         Button("Look Again") { Task { await model.discoverExtendedValues() } }
                     }
                 } else {
-                    Text("Newer Subarus can report AVCS (VVT) angles, knock and boost control this way. Turn this on and connect: SubieScope checks which values your car answers and offers those in the Logger.")
+                    Text("Newer Subarus can report AVCS (VVT) angles, knock and boost control this way. Turn this on and connect: SubieScope checks which values your car answers and offers those in the Logger. It might work on Subarus from about 2015, including cars with the FA20 or FA24 engine, but it has not been tested on a real one yet. If you try it, Help > Send Diagnostic Report… shows the developer what your car answered.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }

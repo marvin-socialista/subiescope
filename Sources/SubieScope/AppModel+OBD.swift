@@ -251,14 +251,21 @@ extension AppModel {
         defer { extendedSearching = false }
         do {
             let found = try await session.discoverExtended()
-            extendedIDs = found
+            extendedDiscovery = found
+            extendedIDs = found.ids
             applyOBDParameters()
-            if found.isEmpty {
-                extendedState = "This car does not answer any extended values. That is normal for most cars, and for Subarus before about 2015."
+            var state: String
+            if found.ids.isEmpty {
+                state = "This car does not answer any of the extended values SubieScope knows. That is normal for most cars, and for Subarus before about 2015."
             } else {
-                extendedState = "Found \(found.count) extended value\(found.count == 1 ? "" : "s"). Add them in the Logger."
+                state = "Found \(found.ids.count) extended value\(found.ids.count == 1 ? "" : "s"). Add them in the Logger."
             }
-            log(extendedState ?? "")
+            // Values the car has and SubieScope cannot name yet. A report from this car is how they get added.
+            if found.unnamedCount > 0 {
+                state += " Your car also lists \(found.unnamedCount) value\(found.unnamedCount == 1 ? "" : "s") SubieScope has no name for yet. Help > Send Diagnostic Report… tells the developer which ones, so they can be added."
+            }
+            extendedState = state
+            log(state)
         } catch {
             extendedState = "Could not look for extended values: \(error.localizedDescription)"
             log(extendedState ?? "")
@@ -267,6 +274,7 @@ extension AppModel {
 
     func closeOBD() {
         extendedIDs = []
+        extendedDiscovery = nil
         extendedState = nil
         obdNotice = nil
         obdSession?.stopPolling()

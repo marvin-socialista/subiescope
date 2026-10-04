@@ -91,7 +91,8 @@ public final class ELM327 {
             throw error
         }
         // The VIN identifies the car, so it stays out of the console and the log.
-        let shown = command == "0902" ? "(VIN reply hidden)" : text.replacingOccurrences(of: "\r", with: " ").trimmingCharacters(in: .whitespaces)
+        let asksVIN = command == "0902" || command.hasPrefix("22F190")
+        let shown = asksVIN ? "(VIN reply hidden)" : text.replacingOccurrences(of: "\r", with: " ").trimmingCharacters(in: .whitespaces)
         traffic?(.received, shown)
         return Self.lines(of: text, echoOf: command)
     }
@@ -312,27 +313,75 @@ public final class ELM327 {
         return result
     }
 
-    /// Finds out which identifiers an ECU answers. Gives up early when the ECU does not speak Mode 22
-    /// at all: after `giveUpAfter` requests with no answer of any kind (not even "not supported").
-    public func probeDIDs(header: String, response: String, dids: [UInt16], giveUpAfter: Int = 8) throws -> [UInt16: [UInt8]] {
-        guard !dids.isEmpty else { return [:] }
+    /// What an ECU answered when asked for a set of identifiers.
+    public struct DIDSurvey: Equatable, Sendable {
+        /// The identifiers that answered, with their data.
+        public var answered: [UInt16: [UInt8]] = [:]
+        /// The identifiers the ECU itself lists as supported, when it has such lists and they held up.
+        public var listed: Set<UInt16>?
+    }
+
+    /// Where an ECU's "supported" lists start: 1000 covers 1001 to 1020, 1020 the next 32, and so on.
+    static let firstDIDList: UInt16 = 0x1000
+
+    /// The identifiers an ECU says it supports. Some Subaru ECUs answer 1000, 1020, 1040 ... with four bytes,
+    /// one bit per identifier, the last bit saying another list follows (like the supported lists of OBD-II
+    /// mode 01). Known from a 2014 Forester and two diesels (Subaru Diesel Crew). nil when the ECU has no such
+    /// list. `through` is the last identifier the lists cover. The request header must be set already.
+    func listedDIDs(maxLists: Int = 64) throws -> (listed: Set<UInt16>, through: UInt16)? {
+        var listed: Set<UInt16> = []
+        var base = Self.firstDIDList
+        for _ in 0..<maxLists {
+            // A later list that fails still leaves what the earlier ones said.
+            guard case .positive(let mask) = try queryDID(base), mask.count == 4 else { break }
+            for bit in 0..<32 where mask[bit / 8] & (0x80 >> UInt8(bit % 8)) != 0 {
+                listed.insert(base + 1 + UInt16(bit))
+            }
+            base += 0x20
+            guard listed.contains(base) else { break }
+        }
+        return base == Self.firstDIDList ? nil : (listed, base)
+    }
+
+    /// Finds out which identifiers an ECU answers. An ECU with "supported" lists is only asked for what it
+    /// lists, plus everything the lists do not cover. Without lists every identifier is asked, giving up early
+    /// when the ECU does not speak Mode 22 at all: after `giveUpAfter` requests with no answer of any kind
+    /// (not even "not supported").
+    public func probeDIDs(header: String, response: String, dids: [UInt16], giveUpAfter: Int = 8) throws -> DIDSurvey {
+        guard !dids.isEmpty else { return DIDSurvey() }
         _ = try send("ATSH" + header)
         _ = try send("ATCRA" + response)
         defer { restoreDefaultHeader() }
-        var found: [UInt16: [UInt8]] = [:]
+        var survey = DIDSurvey()
         var spoke = false
-        for (index, did) in dids.enumerated() {
+        func answers(_ did: UInt16) throws -> Bool {
             switch try queryDID(did) {
-            case .positive(let data): found[did] = data; spoke = true
-            case .negative: spoke = true
-            case .silent: break
+            case .positive(let data): survey.answered[did] = data; spoke = true; return true
+            case .negative: spoke = true; return false
+            case .silent: return false
             }
+        }
+        var wanted = dids
+        if let lists = try listedDIDs() {
+            spoke = true
+            let leftOut = Set(dids.filter { $0 > Self.firstDIDList && $0 <= lists.through && !lists.listed.contains($0) })
+            // The lists are only known from a few cars. If a value they leave out answers anyway, they do not
+            // mean what we think on this car, and every value is asked as before.
+            if try dids.filter(leftOut.contains).prefix(4).contains(where: answers) {
+                DiagnosticLog.shared.warning("obd", "ECU \(header) answers a value its supported lists leave out; asking for every value instead")
+            } else {
+                survey.listed = lists.listed.filter { $0 % 0x20 != 0 }
+                wanted = dids.filter { !leftOut.contains($0) }
+            }
+        }
+        for (index, did) in wanted.enumerated() where survey.answered[did] == nil {
+            _ = try answers(did)
             if !spoke && index + 1 >= giveUpAfter {
                 DiagnosticLog.shared.info("obd", "ECU \(header) does not answer Mode 22; skipping the rest")
                 break
             }
         }
-        return found
+        return survey
     }
 
     /// "62 10 B4 8A" -> the data bytes after the identifier.

@@ -12,6 +12,27 @@ public struct OBDInfo: Equatable, Sendable {
     public var voltage: Double?
 }
 
+/// What the search for extended (Mode 22) values found on this car.
+public struct ExtendedDiscovery: Equatable, Sendable {
+    /// Where Subaru ECUs report their ROM ID, five bytes (Subaru Diesel Crew).
+    static let romIDIdentifier: UInt16 = 0xF182
+
+    /// IDs of the known values the car answered.
+    public var ids: Set<String> = []
+    /// The version of the ECU's software as hex, e.g. "5A04784207": the same ID the SSM protocol reports.
+    public var romID: String?
+    /// Identifiers the car lists as supported that SubieScope has no definition for, by ECU address ("7A2").
+    public var unnamed: [String: [UInt16]] = [:]
+
+    public init() {}
+
+    public var unnamedCount: Int { unnamed.values.reduce(0) { $0 + $1.count } }
+
+    public static func hex(_ identifiers: [UInt16]) -> String {
+        identifiers.map { String(format: "%04X", $0) }.joined(separator: " ")
+    }
+}
+
 /// Owns the adapter. Like `SSMSession`, all I/O runs on one serial queue and the
 /// polling loop re-enqueues itself, so one-off jobs (reading codes) run between two polls.
 public final class OBDSession: @unchecked Sendable {
@@ -195,21 +216,34 @@ public final class OBDSession: @unchecked Sendable {
         return any
     }
 
-    /// Asks the car which extended (Mode 22) values it answers. Returns the IDs of those that did. Takes a
-    /// few seconds on a car that answers, and only a moment on one that does not speak Mode 22 at all.
-    public func discoverExtended(catalog: [ExtendedPID] = ExtendedParameters.catalog) async throws -> Set<String> {
+    /// Asks the car which extended (Mode 22) values it answers. Takes a few seconds on a car that answers,
+    /// and only a moment on one that does not speak Mode 22 at all.
+    public func discoverExtended(catalog: [ExtendedPID] = ExtendedParameters.catalog) async throws -> ExtendedDiscovery {
         try await run { elm in
-            guard elm.supportsExtended else { return [] }
-            var found: Set<String> = []
-            for (key, group) in Dictionary(grouping: catalog, by: { $0.header + ">" + $0.response }) {
+            var found = ExtendedDiscovery()
+            guard elm.supportsExtended else { return found }
+            let groups = Dictionary(grouping: catalog, by: { $0.header + ">" + $0.response })
+            for key in groups.keys.sorted() {
+                let group = groups[key] ?? []
                 let parts = key.split(separator: ">").map(String.init)
                 // Identification first: an ECU that answers even that speaks Mode 22. The rest is visited spread
                 // over the whole list, so a car that only answers a few scattered values is still noticed
                 // within the first requests before the search would give up on a silent ECU.
-                let dids = [UInt16(0xF190), 0xF187, 0xF194] + Self.spread(group.sorted { $0.didValue < $1.didValue }).map(\.didValue)
-                let answered = try elm.probeDIDs(header: parts[0], response: parts[1], dids: dids, giveUpAfter: 40)
-                for pid in group where answered[pid.didValue] != nil { found.insert(pid.id) }
-                DiagnosticLog.shared.info("obd", "Extended values on \(parts[0]): \(group.filter { answered[$0.didValue] != nil }.count) of \(group.count) answered")
+                let dids = [ExtendedDiscovery.romIDIdentifier, 0xF190, 0xF187, 0xF194] + Self.spread(group.sorted { $0.didValue < $1.didValue }).map(\.didValue)
+                let survey = try elm.probeDIDs(header: parts[0], response: parts[1], dids: dids, giveUpAfter: 40)
+                for pid in group where survey.answered[pid.didValue] != nil { found.ids.insert(pid.id) }
+                if found.romID == nil, let rom = survey.answered[ExtendedDiscovery.romIDIdentifier], !rom.isEmpty {
+                    let id = rom.map { String(format: "%02X", $0) }.joined()
+                    found.romID = id
+                    DiagnosticLog.shared.info("obd", "ROM ID from \(parts[0]): \(id)")
+                }
+                DiagnosticLog.shared.info("obd", "Extended values on \(parts[0]): \(group.filter { survey.answered[$0.didValue] != nil }.count) of \(group.count) answered")
+                if let listed = survey.listed {
+                    // Values the car has and SubieScope cannot name yet: worth having in a diagnostic report.
+                    let unnamed = listed.subtracting(group.map(\.didValue)).sorted()
+                    if !unnamed.isEmpty { found.unnamed[parts[0]] = unnamed }
+                    DiagnosticLog.shared.info("obd", "ECU \(parts[0]) lists \(listed.count) identifiers as supported, \(unnamed.count) without a definition\(unnamed.isEmpty ? "" : ": " + ExtendedDiscovery.hex(unnamed))")
+                }
             }
             return found
         }
