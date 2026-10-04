@@ -72,7 +72,7 @@ struct SetupWizardView: View {
         switch step {
         case .welcome: return "Welcome to SubieScope"
         case .car: return comparing ? "Compare the two ways to connect" : "What car do you have?"
-        case .connect: return chosen == .obd ? "Connect the Bluetooth adapter" : "Connect the cable"
+        case .connect: return chosen == .obd ? "Connect the adapter" : "Connect the cable"
         case .done: return usedDemo ? "You're all set" : (model.connection.isConnected ? "You're connected" : "You're all set")
         }
     }
@@ -231,7 +231,7 @@ struct SetupWizardView: View {
                  : "The standard protocol works on newer Subarus and on other brands, wirelessly. You get the basics (rpm, speed, temperatures, load, fuel trims, boost, trouble codes) but not Subaru-only values such as knock and IAM. You need an ELM327 adapter with Bluetooth 4.0 (BLE), such as the Vgate iCar Pro BLE 4.0.")
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("I have \(other.title == "OBD-II" ? "an OBD-II Bluetooth adapter" : "the SSM USB cable") instead") { chosen = other }
+            Button("I have \(other.title == "OBD-II" ? "an OBD-II adapter" : "the SSM USB cable") instead") { chosen = other }
                 .buttonStyle(.link)
                 .font(.callout)
         }
@@ -378,10 +378,11 @@ struct ModeComparison: View {
     }
 }
 
-/// The Bluetooth adapter checks: plug in, allow Bluetooth, pick the adapter, test.
+/// The adapter checks: plug in, allow Bluetooth, pick the adapter, test.
 struct AdapterSteps: View {
     @Environment(AppModel.self) private var model
     @State private var searching = false
+    @State private var showingOthers = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -435,6 +436,15 @@ struct AdapterSteps: View {
                         .disabled(model.connection.isConnected || model.connection == .connecting)
                     }
                 }
+                DisclosureGroup("I have a USB or Wi-Fi adapter (experimental)", isExpanded: $showingOthers) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        OtherAdapterRows()
+                        Text("Wi-Fi: join the adapter's own Wi-Fi network on your Mac first.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 6)
+                }
+                .font(.callout)
             }
 
             SetupStep(number: 3, title: "Test the connection", done: model.connection.isConnected) {
@@ -462,6 +472,7 @@ struct AdapterSteps: View {
         .onAppear {
             // Already asked for Bluetooth before: no need to explain it again.
             if model.bleStatus != .idle { searching = true } else if model.selectedAdapterID != nil { searching = true; model.startBLEScan() }
+            showingOthers = model.selectedAdapterKind != .bluetooth
         }
     }
 

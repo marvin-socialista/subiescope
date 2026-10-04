@@ -81,11 +81,12 @@ struct MainToolbar: ToolbarContent {
                 .frame(minWidth: 220, maxWidth: 320)
 
             Button {
-                if model.mode == .obd { model.restartBLEScan() } else { model.refreshPorts() }
+                if model.mode == .obd { model.restartBLEScan() }
+                model.refreshPorts()
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
-            .help(model.mode == .obd ? "Look for Bluetooth adapters again" : "Look for cables again")
+            .help(model.mode == .obd ? "Look for adapters again" : "Look for cables again")
             .disabled(model.connection.isConnected)
         }
 

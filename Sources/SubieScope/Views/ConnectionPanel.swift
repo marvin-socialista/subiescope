@@ -108,7 +108,7 @@ struct ConnectionSettings: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .help("SSM: Subaru's own protocol over a USB cable, for cars up to about 2014.\nOBD-II: standard protocol over a Bluetooth adapter, for newer cars.")
+            .help("SSM: Subaru's own protocol over a USB cable, for cars up to about 2014.\nOBD-II: standard protocol over an ELM327 adapter, for newer cars.")
 
             DevicePicker()
                 .labelsHidden()
@@ -121,7 +121,7 @@ struct ConnectionSettings: View {
     }
 }
 
-/// The cable list in SSM mode, the Bluetooth adapter list in OBD-II mode, each with its demo car.
+/// The cable list in SSM mode, the adapter list in OBD-II mode, each with its demo car.
 struct DevicePicker: View {
     @Environment(AppModel.self) private var model
 
@@ -133,16 +133,23 @@ struct DevicePicker: View {
                     if model.bleAdapters.isEmpty && model.selectedAdapterID == nil {
                         Text(model.bleStatus.message == nil ? "Looking for adapters…" : "No adapter found").tag(String?.none)
                     }
-                    if let id = model.selectedAdapterID, id != AppModel.demoOBDID, !model.bleAdapters.contains(where: { $0.id == id }) {
+                    // A saved adapter that is out of range or unplugged still needs its row.
+                    if let id = model.selectedAdapterID, !model.listedAdapterIDs.contains(id) {
                         Text(model.selectedAdapterLabel).tag(Optional(id))
                     }
                     ForEach(model.bleAdapters) { adapter in
                         Text(adapter.name).tag(Optional(adapter.id))
                     }
+                    Section("USB and Wi-Fi (experimental)") {
+                        ForEach(model.ports) { port in
+                            Text(AppModel.usbAdapterLabel(port)).tag(Optional(AppModel.usbAdapterID(port)))
+                        }
+                        Text(model.wifiAdapterLabel).tag(Optional(model.wifiAdapterID))
+                    }
                     Divider()
                     Text("Demo OBD-II car (simulated)").tag(Optional(AppModel.demoOBDID))
                 }
-                .help("The Bluetooth adapter to use. Plug it into the car and turn the ignition ON so it shows up.")
+                .help("The adapter to use. A Bluetooth adapter shows up once it is plugged into the car with the ignition ON. USB and Wi-Fi adapters are experimental.")
             } else {
                 Picker("Cable", selection: $model.selectedPortID) {
                     if model.ports.isEmpty {
@@ -242,10 +249,14 @@ struct ConnectionStatus {
                     title = "Demo car selected"
                     detail = "Press Connect to try SubieScope with a simulated OBD-II car."
                     color = .secondary
-                } else if let problem = model.bleStatus.message {
+                } else if model.selectedAdapterKind == .bluetooth, let problem = model.bleStatus.message {
                     title = "Bluetooth problem"
                     detail = problem
                     color = .orange
+                } else if model.selectedAdapterKind == .wifi {
+                    title = "Wi-Fi adapter selected"
+                    detail = "Join the adapter's Wi-Fi network on your Mac, turn the ignition ON, then press Connect."
+                    color = .secondary
                 } else if model.selectedAdapterID != nil {
                     title = "Adapter selected"
                     detail = "Plug it into the car's OBD port, turn the ignition ON, then press Connect."
@@ -322,7 +333,7 @@ struct ConnectionPanel: View {
             }
 
             HStack {
-                Label("\(model.mode.title): \(model.mode == .ssm ? "USB cable" : "Bluetooth adapter")", systemImage: model.mode.symbol)
+                Label("\(model.mode.title): \(model.mode == .ssm ? "USB cable" : model.adapterKindLabel)", systemImage: model.mode.symbol)
                     .font(.callout.weight(.medium))
                 Spacer()
                 Button("Change…") {
@@ -331,7 +342,7 @@ struct ConnectionPanel: View {
                 }
                 .controlSize(.small)
                 .disabled(model.connection.isConnected || model.connection == .connecting)
-                .help("Switch between the Subaru SSM cable and an OBD-II Bluetooth adapter")
+                .help("Switch between the Subaru SSM cable and an OBD-II adapter")
             }
 
             if model.mode == .obd {
@@ -467,6 +478,9 @@ struct ConnectionPanel: View {
                 }
             }
         }
+        PanelSection(title: "USB or Wi-Fi adapter (experimental)", symbol: "cable.connector") {
+            OtherAdapterRows()
+        }
     }
 
     @ViewBuilder
@@ -479,13 +493,70 @@ struct ConnectionPanel: View {
             LabeledContent("Speed", value: String(format: "%.1f samples/s", model.samplesPerSecond)).font(.callout)
         } else {
             Text("How to connect").font(.callout.weight(.semibold))
-            ChecklistRow(done: model.bleStatus.message == nil, text: "Plug the adapter into the car",
-                         detail: "The OBD port is under the dashboard on the driver's side. Use an ELM327 adapter with Bluetooth 4.0 (BLE), such as the Vgate iCar Pro.")
-            ChecklistRow(done: !model.bleAdapters.isEmpty, text: "Turn the ignition ON",
-                         detail: "The engine may be off or running. The adapter switches on and appears in the list. Close other apps that use it: it accepts one connection at a time.")
-            ChecklistRow(done: model.selectedAdapterID != nil, text: "Pick it and press Connect",
-                         detail: "The first time, macOS asks whether SubieScope may use Bluetooth. Say yes. Finding the car can take up to 10 seconds.")
+            switch model.selectedAdapterKind {
+            case .bluetooth:
+                ChecklistRow(done: model.bleStatus.message == nil, text: "Plug the adapter into the car",
+                             detail: "The OBD port is under the dashboard on the driver's side. Use an ELM327 adapter with Bluetooth 4.0 (BLE), such as the Vgate iCar Pro.")
+                ChecklistRow(done: !model.bleAdapters.isEmpty, text: "Turn the ignition ON",
+                             detail: "The engine may be off or running. The adapter switches on and appears in the list. Close other apps that use it: it accepts one connection at a time.")
+                ChecklistRow(done: model.selectedAdapterID != nil, text: "Pick it and press Connect",
+                             detail: "The first time, macOS asks whether SubieScope may use Bluetooth. Say yes. Finding the car can take up to 10 seconds.")
+            case .usb:
+                ChecklistRow(done: model.ports.contains { AppModel.usbAdapterID($0) == model.selectedAdapterID },
+                             text: "Plug the adapter into your Mac and into the car",
+                             detail: "It has to be an ELM327 type adapter. The OBD port is under the dashboard on the driver's side.")
+                ChecklistRow(done: false, text: "Turn the ignition ON", detail: "The engine may be off or running.")
+                ChecklistRow(done: false, text: "Press Connect",
+                             detail: "SubieScope tries the speeds these adapters use, which takes a few seconds, and then looks for the car.")
+            case .wifi:
+                ChecklistRow(done: false, text: "Plug the adapter into the car and turn the ignition ON",
+                             detail: "The OBD port is under the dashboard on the driver's side. The engine may be off or running.")
+                ChecklistRow(done: false, text: "Join the adapter's Wi-Fi network on your Mac",
+                             detail: "It shows up in the Wi-Fi menu, often as WiFi_OBDII or V-LINK. Your Mac has no internet while it is on that network.")
+                ChecklistRow(done: false, text: "Press Connect",
+                             detail: "macOS may ask whether SubieScope may find devices on your local network. Say yes. Most adapters use the address 192.168.0.10:35000.")
+            }
         }
+    }
+}
+
+/// USB adapters and the Wi-Fi adapter as choices, next to the Bluetooth list. Both are experimental.
+struct OtherAdapterRows: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        let locked = model.connection.isConnected || model.connection == .connecting
+        ForEach(model.ports) { port in
+            row(AppModel.usbAdapterID(port), AppModel.usbAdapterLabel(port))
+        }
+        HStack {
+            row(model.wifiAdapterID, "Wi-Fi adapter at")
+            TextField("192.168.0.10:35000", text: $model.wifiAddress)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 160)
+                .help("Address and port of the adapter. Nearly all Wi-Fi adapters use 192.168.0.10:35000.")
+        }
+        .disabled(locked)
+        Text("New, and tested with a simulated adapter only. If yours does not work, please send a report from the Help menu.")
+            .font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func row(_ id: String, _ name: String) -> some View {
+        Button {
+            model.selectedAdapterID = id
+        } label: {
+            HStack {
+                Image(systemName: model.selectedAdapterID == id ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(model.selectedAdapterID == id ? Color.scopeBlue : .secondary)
+                Text(name).font(.callout).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.connection.isConnected || model.connection == .connecting)
     }
 }
 

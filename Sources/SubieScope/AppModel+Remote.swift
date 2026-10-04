@@ -7,8 +7,9 @@ extension AppModel {
     static let remoteHelp = [
         "Commands (subiescope-cli remote <command>):",
         "  status                 connection state, adapter, protocol, speed",
-        "  adapters               Bluetooth adapters in range",
+        "  adapters               Bluetooth adapters in range, USB ports and the Wi-Fi address",
         "  select <name>          choose an adapter by (part of) its name, or 'demo'",
+        "                         'wifi' or 'wifi <address:port>' for a Wi-Fi adapter, a /dev/ path for a serial port",
         "  connect / disconnect   connect the selected adapter, or let go",
         "  send <request>         send one raw request and print the reply, e.g. send 010C or send 22 10B4",
         "                         AT commands too (ATSH7A2). Read-only services only.",
@@ -62,15 +63,36 @@ extension AppModel {
                 startBLEScan()
                 try? await Task.sleep(for: .seconds(6))
             }
-            if bleAdapters.isEmpty { return ["No adapters in range. \(bleStatus.message ?? "Is it plugged in with the ignition ON?")"] }
-            return bleAdapters.map { "\($0.name)\($0.id == selectedAdapterID ? "  (selected)" : "")  rssi \($0.rssi)" }
+            refreshPorts()
+            func mark(_ id: String) -> String { id == selectedAdapterID ? "  (selected)" : "" }
+            var lines = bleAdapters.map { "\($0.name)\(mark($0.id))  rssi \($0.rssi)" }
+            if lines.isEmpty { lines = ["No Bluetooth adapters in range. \(bleStatus.message ?? "Is it plugged in with the ignition ON?")"] }
+            lines += ports.map { "\(Self.usbAdapterLabel($0))\(mark(Self.usbAdapterID($0)))" }
+            lines.append("\(wifiAdapterLabel)\(mark(wifiAdapterID))")
+            return lines
         case "select":
-            if argument.lowercased() == "demo" { selectedAdapterID = Self.demoOBDID; return ["Selected the demo adapter."] }
-            guard let match = bleAdapters.first(where: { $0.name.lowercased().contains(argument.lowercased()) }) else {
-                return ["No adapter matching \"\(argument)\". Try: adapters"]
+            let wanted = argument.lowercased()
+            if wanted == "demo" { selectedAdapterID = Self.demoOBDID; return ["Selected the demo adapter."] }
+            if wanted == "wifi" || wanted.hasPrefix("wifi ") {
+                let address = argument.dropFirst(4).trimmingCharacters(in: .whitespaces)
+                if !address.isEmpty { wifiAddress = address }
+                selectedAdapterID = wifiAdapterID
+                return ["Selected the \(wifiAdapterLabel)."]
             }
-            selectedAdapterID = match.id
-            return ["Selected \(match.name)."]
+            if wanted.hasPrefix("/dev/") {
+                selectedAdapterID = OBDAdapterLink.serial(path: argument).id
+                return ["Selected the serial port \(argument)."]
+            }
+            if let match = bleAdapters.first(where: { $0.name.lowercased().contains(wanted) }) {
+                selectedAdapterID = match.id
+                return ["Selected \(match.name)."]
+            }
+            refreshPorts()
+            if let port = ports.first(where: { $0.displayName.lowercased().contains(wanted) }) {
+                selectedAdapterID = Self.usbAdapterID(port)
+                return ["Selected \(Self.usbAdapterLabel(port))."]
+            }
+            return ["No adapter matching \"\(argument)\". Try: adapters"]
         case "connect":
             if mode != .obd { setMode(.obd) }
             await connect()

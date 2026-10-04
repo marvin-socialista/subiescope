@@ -4,7 +4,7 @@ import Foundation
 enum ConnectionMode: String, CaseIterable, Identifiable {
     /// Subaru's own protocol over a VAG KKL USB cable: the full Subaru data set.
     case ssm
-    /// Standard OBD-II over a Bluetooth LE ELM327 adapter: any car, basic data.
+    /// Standard OBD-II over an ELM327 adapter (Bluetooth LE, or USB and Wi-Fi as experimental): any car, basic data.
     case obd
 
     var id: String { rawValue }
@@ -29,7 +29,7 @@ enum ConnectionMode: String, CaseIterable, Identifiable {
     var hardware: String {
         switch self {
         case .ssm: return "USB cable (VAG KKL, FTDI chip)"
-        case .obd: return "Bluetooth adapter (ELM327, Bluetooth 4.0 / LE)"
+        case .obd: return "ELM327 adapter (Bluetooth 4.0 / LE recommended)"
         }
     }
 
@@ -73,7 +73,7 @@ enum ModeGuide {
         "No Subaru-only values (knock correction, IAM, AVCS, wastegate duty)",
         "Slower: roughly 3 to 10 samples per second, depending on your adapter and how many gauges you show, so the dyno is only a rough indication",
     ]
-    static let obdNeeds = "An ELM327 adapter with Bluetooth 4.0 (BLE), such as the Vgate iCar Pro BLE 4.0. Older Bluetooth Classic and Wi-Fi adapters are not supported yet."
+    static let obdNeeds = "An ELM327 adapter with Bluetooth 4.0 (BLE), such as the Vgate iCar Pro BLE 4.0. USB and Wi-Fi ELM327 adapters are new and experimental. Older Bluetooth Classic adapters are not supported."
 
     static let ssmModels: [Row] = [
         Row(model: "Impreza, WRX, WRX STI (GC/GF, GD/GG, GE/GH/GR/GV)", years: "1999 to 2014", note: "Best choice"),

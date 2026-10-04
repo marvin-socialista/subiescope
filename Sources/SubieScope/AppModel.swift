@@ -101,6 +101,14 @@ final class AppModel {
     var selectedAdapterID: String? {
         didSet { if selectedAdapterID != Self.demoOBDID { UserDefaults.standard.set(selectedAdapterID, forKey: "selectedAdapter") } }
     }
+    /// Address of a Wi-Fi adapter, as typed: "192.168.0.10:35000" is what nearly all of them use.
+    var wifiAddress: String = UserDefaults.standard.string(forKey: "wifiAdapterAddress") ?? OBDAdapterLink.network(address: "").address {
+        didSet {
+            UserDefaults.standard.set(wifiAddress, forKey: "wifiAdapterAddress")
+            // Keep pointing at the Wi-Fi adapter while its address is being edited.
+            if case .network = selectedLink, selectedAdapterID != wifiAdapterID { selectedAdapterID = wifiAdapterID }
+        }
+    }
     var obdInfo: OBDInfo?
     var obdSession: OBDSession?
     /// Something worth knowing about the car's answers (values it does not report), shown on the dashboard.
@@ -233,6 +241,7 @@ final class AppModel {
         tileConfigs = saved.tiles
         selectedPortID = defaults.string(forKey: "selectedPort")
         selectedAdapterID = defaults.string(forKey: "selectedAdapter")
+        if case .network = selectedLink, let address = selectedLink?.address { wifiAddress = address }
         loadDefinitions()
         if definitions == nil && mode == .ssm {
             Task { await downloadDefinitions() }

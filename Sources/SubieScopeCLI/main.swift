@@ -14,6 +14,7 @@ commands:
   log                        Print live values (and optionally write a CSV)
   codes                      Read trouble codes
   demo                       Run the demo ECU on a pseudo terminal for testing
+  demo --obd                 Run a simulated OBD-II adapter instead, as a USB cable and as a Wi-Fi adapter
   remote <command>           Talk to a running SubieScope and its OBD-II adapter (see `remote help`)
 
 options:
@@ -26,6 +27,7 @@ options:
   --csv FILE                 Also write the log to FILE
   --seconds N                Stop `log` after N seconds
   --no-fast                  Disable fast poll (continuous mode)
+  --tcp PORT                 demo --obd only: the port of the simulated Wi-Fi adapter (default 35000)
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -245,6 +247,21 @@ case "remote":
         let reply = remoteSend(args.isEmpty ? "help" : args.joined(separator: " "))
         reply.forEach { print($0) }
     }
+
+case "demo" where flag("--obd"):
+    // Stands in for the adapters nobody has on the desk: the app talks to these over its real USB and Wi-Fi code.
+    let wifiPort = option("--tcp").flatMap { UInt16($0) } ?? OBDAdapterLink.defaultPort
+    guard let usb = try? SimulatedELMServer.serial(), let path = usb.devicePath else { fail("could not start the simulated USB adapter") }
+    guard let wifi = try? SimulatedELMServer.network(port: wifiPort) else { fail("could not listen on port \(wifiPort): is it in use? Try --tcp with another port.") }
+    usb.adapter.enableDemoExtended()
+    wifi.adapter.enableDemoExtended()
+    print("Simulated OBD-II adapter with a demo car. Ctrl-C to stop.")
+    print("  As a USB adapter:    \(path)")
+    print("  As a Wi-Fi adapter:  127.0.0.1:\(wifiPort)")
+    print("In SubieScope: type the Wi-Fi address in the connection panel, or start the app with")
+    print("  -connectionMode obd -selectedAdapter usb:\(path)")
+    fflush(stdout)   // so the path shows up when the output goes to a file or a pipe
+    withExtendedLifetime((usb, wifi)) { while true { Thread.sleep(forTimeInterval: 1) } }
 
 case "demo":
     let defs = try? LoggerDefinitions.bundled()

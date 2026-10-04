@@ -32,8 +32,8 @@ public enum OBDError: Error, LocalizedError, Equatable {
     }
 }
 
-/// A line to an ELM327 adapter: Bluetooth LE, or a simulator. Calls block, and are
-/// made from one queue only.
+/// A line to an ELM327 adapter: Bluetooth LE, a serial port, Wi-Fi, or a simulator. Calls
+/// block, and are made from one queue only.
 public protocol ELMChannel: AnyObject, Sendable {
     /// Sends `command` (the carriage return is added for you) and returns everything
     /// the adapter answered up to, and without, the ">" prompt.

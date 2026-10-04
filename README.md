@@ -66,7 +66,8 @@ OBD-II mode is new and has been tested against a simulated adapter and car. Repo
   - Avoid cables with a CH340 chip: they're known to be unreliable with Subarus.
   - Cables with a switch: use the position that puts K-line on pin 7.
   - A Subaru that speaks SSM over K-line (see below).
-- For **OBD-II**: an ELM327 adapter with **Bluetooth 4.0 (BLE)**, such as the Vgate iCar Pro BLE 4.0. Bluetooth Classic and Wi-Fi adapters are not supported yet. The first time, macOS asks whether SubieScope may use Bluetooth.
+- For **OBD-II**: an ELM327 adapter with **Bluetooth 4.0 (BLE)**, such as the Vgate iCar Pro BLE 4.0. The first time, macOS asks whether SubieScope may use Bluetooth.
+  - **USB and Wi-Fi ELM327 adapters** are experimental, see [below](#usb-and-wi-fi-adapters-experimental). Bluetooth Classic adapters are not supported.
 
 ## Supported cars
 
@@ -117,14 +118,14 @@ The app bundle also contains `subiescope-cli`, which is handy at the car or for 
 /Applications/SubieScope.app/Contents/MacOS/subiescope-cli codes     # read trouble codes
 ```
 
-Add `--demo` to any command to use the simulated car.
+Add `--demo` to any command to use the simulated car. `subiescope-cli demo --obd` runs a simulated OBD-II adapter as a USB port and as a Wi-Fi address on your own Mac, for trying the app's USB and Wi-Fi connections without the hardware.
 
 ### Talking to the running app (developer)
 
 With **Settings > General > Let the command line tool control the app** on (or start the app with `-remoteControl YES`), `subiescope-cli remote` sends read-only requests to the adapter the app is connected to. That makes it possible to try things, or let an AI assistant try things, against a real car without rebuilding anything:
 
 ```sh
-subiescope-cli remote adapters            # Bluetooth adapters in range
+subiescope-cli remote adapters            # Bluetooth adapters in range, USB ports, the Wi-Fi address
 subiescope-cli remote connect             # connect the selected adapter
 subiescope-cli remote send 010C           # any raw request, here engine speed
 subiescope-cli remote send ATSH7A2        # AT commands work too (set the request header)
@@ -142,6 +143,15 @@ Some newer Subarus can report more than standard OBD-II, such as AVCS (VVT) angl
 Most cars do not answer any of them. A 2008 WRX STI tested at the car answered none, which matches the community data; it is mainly for Subarus from about 2015. The definitions are community data, so check a value against what you expect before you trust it. This part is new and has been tested against a simulated car only.
 
 You can also choose to show pressures in **kPa, bar or psi** (Settings > General > Pressure).
+
+## USB and Wi-Fi adapters (experimental)
+
+Besides Bluetooth 4.0, OBD-II mode can use an ELM327 adapter with a **USB cable** or with **Wi-Fi**. Pick it in the adapter menu, under "USB and Wi-Fi (experimental)", or in the connection panel.
+
+- **USB:** plug the adapter into your Mac and the car, pick its port and press Connect. SubieScope tries the speeds these adapters use (38400, 115200, 9600 and a few more), which takes a few seconds. The adapter's USB chip needs a driver in macOS: FTDI chips work out of the box.
+- **Wi-Fi:** join the adapter's own Wi-Fi network on your Mac first (often named WiFi_OBDII or V-LINK; your Mac has no internet while it is on that network), then press Connect. Nearly all adapters use the address `192.168.0.10:35000`, which is filled in for you. Change it in the connection panel if yours differs. macOS may ask whether SubieScope may find devices on your local network: say yes.
+
+Both are new and have been tested against a simulated adapter only, not against real hardware. If yours does not work, **Help > Send Diagnostic Report…** shows what the adapter answered, and reports that it does work are just as welcome. A VAG KKL cable is not an ELM327 adapter: it only works in Subaru SSM mode.
 
 ## When something goes wrong
 

@@ -54,6 +54,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSBluetoothAlwaysUsageDescription</key><string>SubieScope connects to a Bluetooth OBD-II adapter in your car to read live data and trouble codes.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>SubieScope connects to a Wi-Fi OBD-II adapter in your car to read live data and trouble codes.</string>
   <key>NSHumanReadableCopyright</key><string>GPL-3.0. Not affiliated with Subaru Corporation.</string>
   <key>CFBundleDocumentTypes</key>
   <array>

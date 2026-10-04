@@ -1,7 +1,7 @@
 import Foundation
 import SSMKit
 
-/// The OBD-II side of the app model: a Bluetooth adapter instead of a KKL cable.
+/// The OBD-II side of the app model: an ELM327 adapter (Bluetooth, USB or Wi-Fi) instead of a KKL cable.
 extension AppModel {
     static let demoOBDID = "demo-obd"
 
@@ -86,16 +86,71 @@ extension AppModel {
         // An adapter stops advertising while connected, so it drops out of the list. Remember its name.
         for adapter in list { rememberedAdapterNames[adapter.id] = adapter.name }
         if let id = selectedAdapterID, let name = rememberedAdapterNames[id] { UserDefaults.standard.set(name, forKey: "selectedAdapterName") }
-        // Pick the adapter automatically when there is one obvious choice.
+        // Pick the adapter automatically when there is one obvious choice. A USB or Wi-Fi adapter was
+        // chosen on purpose, so it stays.
         let known = Set(list.map(\.id) + [Self.demoOBDID])
-        if selectedAdapterID == nil || (!known.contains(selectedAdapterID!) && !connection.isConnected && connection != .connecting),
+        if selectedAdapterID == nil || (selectedAdapterKind == .bluetooth && !known.contains(selectedAdapterID!)
+                                        && !connection.isConnected && connection != .connecting),
            let first = list.first(where: \.looksLikeOBD) {
             selectedAdapterID = first.id
         }
     }
 
+    // MARK: USB and Wi-Fi adapters (experimental)
+
+    enum AdapterKind { case bluetooth, usb, wifi }
+
+    /// How the selected adapter is reached. Nothing for the demo car, or when none is selected.
+    var selectedLink: OBDAdapterLink? {
+        guard let id = selectedAdapterID, id != Self.demoOBDID else { return nil }
+        return OBDAdapterLink(id: id)
+    }
+
+    var selectedAdapterKind: AdapterKind {
+        switch selectedLink {
+        case .serial: return .usb
+        case .network: return .wifi
+        case .bluetooth, nil: return .bluetooth
+        }
+    }
+
+    /// "Bluetooth adapter", "USB adapter" or "Wi-Fi adapter".
+    var adapterKindLabel: String {
+        switch selectedAdapterKind {
+        case .bluetooth: return "Bluetooth adapter"
+        case .usb: return "USB adapter"
+        case .wifi: return "Wi-Fi adapter"
+        }
+    }
+
+    /// The Wi-Fi adapter at the typed address, as an adapter to select.
+    var wifiAdapterID: String { OBDAdapterLink.network(address: wifiAddress).id }
+    var wifiAdapterLabel: String { "Wi-Fi adapter (\(OBDAdapterLink.network(address: wifiAddress).address))" }
+
+    /// Every adapter the lists offer right now. A saved one that is missing here is out of range or unplugged.
+    var listedAdapterIDs: Set<String> {
+        Set(bleAdapters.map(\.id) + ports.map(Self.usbAdapterID) + [wifiAdapterID, Self.demoOBDID])
+    }
+
+    static func usbAdapterID(_ port: SerialPortInfo) -> String { OBDAdapterLink.serial(path: port.path).id }
+
+    /// A serial port as an adapter choice. A paired Bluetooth Classic adapter is a serial port too, without USB.
+    static func usbAdapterLabel(_ port: SerialPortInfo) -> String {
+        "\(port.isUSB ? "USB" : "Serial port"): \(port.displayName)"
+    }
+
     var selectedAdapterLabel: String {
         if selectedAdapterID == Self.demoOBDID { return "Demo OBD-II car (simulated)" }
+        switch selectedLink {
+        case .serial(let path):
+            if let port = ports.first(where: { $0.path == path }) { return Self.usbAdapterLabel(port) }
+            let name = (path as NSString).lastPathComponent
+            return connection.isConnected ? "USB: \(name)" : "USB: \(name) (not plugged in)"
+        case .network:
+            return wifiAdapterLabel
+        case .bluetooth, nil:
+            break
+        }
         if let adapter = bleAdapters.first(where: { $0.id == selectedAdapterID }) { return adapter.name }
         if let id = selectedAdapterID {
             // Connected adapters stop advertising, so they are not in the scan list: use the name we saw earlier.
@@ -130,8 +185,19 @@ extension AppModel {
                 channel = simulator
                 log("Starting the simulated OBD-II adapter")
             } else {
-                log("Connecting to \(selectedAdapterLabel) over Bluetooth")
-                channel = try await BLEChannel.open(id: id)
+                switch OBDAdapterLink(id: id) {
+                case .bluetooth(let peripheral):
+                    log("Connecting to \(selectedAdapterLabel) over Bluetooth")
+                    channel = try await BLEChannel.open(id: peripheral)
+                case .serial(let path):
+                    log("Opening \(path) and finding the adapter's speed")
+                    let serial = try await SerialELMChannel.open(path: path)
+                    log("The adapter answers at \(serial.baud) baud")
+                    channel = serial
+                case .network(let host, let port):
+                    log("Connecting to the Wi-Fi adapter at \(host):\(port)")
+                    channel = try await TCPELMChannel.open(host: host, port: port)
+                }
             }
             let session = OBDSession(channel: channel)
             session.elm.traffic = { [weak self] direction, text in

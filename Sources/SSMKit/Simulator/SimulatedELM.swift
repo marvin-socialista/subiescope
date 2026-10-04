@@ -134,6 +134,7 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         case "Z":
             echo = true; spaces = true; connected = false
             return "\r\rELM327 v2.3\r\r"
+        case "I": return "ELM327 v2.3\r"
         case "E0": echo = false; return "OK\r"
         case "E1": echo = true; return "OK\r"
         case "S0": spaces = false; return "OK\r"

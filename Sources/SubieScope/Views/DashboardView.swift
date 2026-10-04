@@ -140,7 +140,7 @@ struct OfflineBanner: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Not connected").font(.headline)
                 Text(model.mode == .obd
-                     ? "Plug the Bluetooth adapter into the OBD port under the dashboard, turn the ignition ON (engine running or not), pick the adapter in the toolbar, then press Connect. No adapter handy? Pick \"Demo OBD-II car\" in the adapter menu."
+                     ? "Plug the adapter into the OBD port under the dashboard, turn the ignition ON (engine running or not), pick the adapter in the toolbar, then press Connect. No adapter handy? Pick \"Demo OBD-II car\" in the adapter menu."
                      : "Plug the cable into the OBD port under the dashboard, turn the ignition ON (engine running or not), then press Connect. No cable handy? Pick \"Demo ECU\" in the cable menu.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
