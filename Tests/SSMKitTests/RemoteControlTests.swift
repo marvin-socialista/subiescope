@@ -8,7 +8,8 @@ struct RemoteControlTests {
 
     @Test func onlyReadOnlyRequestsAreAllowed() {
         // Reading data and codes is fine.
-        for ok in ["010C", "01 0C", "0100", "22 10B4", "22F190", "03", "07", "0902", "19 02 FF", "010C1", "ATZ", "ATSH7E0", "AT DP", "atcra7aa"] {
+        for ok in ["010C", "01 0C", "0100", "22 10B4", "22F190", "03", "07", "0902", "19 02 FF", "010C1", "ATZ", "ATSH7E0", "AT DP", "atcra7aa",
+                   "AA", "A800000008", "a8 00 00 00 08"] {   // Subaru SSM over CAN: identify, read an address
             #expect(CommandPolicy.check(ok) == nil, "\(ok) should be allowed")
         }
         // Anything that changes the car or the adapter is refused.
@@ -22,6 +23,8 @@ struct RemoteControlTests {
             ("14 FF FF FF", "not read-only"),   // clear DTC (UDS)
             ("34 00 44", "not read-only"),      // request download (flashing)
             ("10 02", "not read-only"),         // session control
+            ("B8 00 00 08 00", "not read-only"),    // SSM write to an address
+            ("B0 00 00 08 00", "not read-only"),    // SSM write a block
             ("ATPP FF SV 00", "permanently"),   // programmable parameters
             ("ATBRD 23", "permanently"),        // change the adapter baud rate
             ("", "Empty"), ("hello", "hex"), ("0G", "hex"),

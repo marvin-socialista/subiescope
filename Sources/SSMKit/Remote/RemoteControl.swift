@@ -20,7 +20,9 @@ public enum RemoteControl {
 public enum CommandPolicy {
     /// OBD-II and UDS services that only read: current data, freeze frame, trouble codes, test results,
     /// vehicle info, read-data-by-identifier, read DTC information, tester present.
-    public static let readOnlyServices: Set<UInt8> = [0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x09, 0x0A, 0x19, 0x22, 0x3E]
+    /// Plus the two Subaru SSM services that only read, for trying SSM over CAN: read addresses (A8)
+    /// and identify the ECU (AA). The SSM write services (B0, B8) stay refused.
+    public static let readOnlyServices: Set<UInt8> = [0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x09, 0x0A, 0x19, 0x22, 0x3E, 0xA8, 0xAA]
 
     /// Adapter commands that could change the adapter for good or break the link to the app.
     static let blockedAdapterCommands = ["ATPP", "ATBRD", "ATBRT"]
