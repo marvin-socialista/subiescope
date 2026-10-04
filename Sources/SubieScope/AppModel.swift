@@ -133,6 +133,15 @@ final class AppModel {
     /// Set while a whole selection is swapped (a mode change), so half of it is never saved.
     @ObservationIgnored var suppressPersist = false
 
+    // MARK: Updates
+    /// A newer release on GitHub: shows the update popup.
+    var updateOffer: UpdateRelease?
+    var checkingForUpdates = false
+    /// On unless turned off, in Settings or with `-autoUpdateCheck NO`.
+    var autoUpdateCheck: Bool = UserDefaults.standard.object(forKey: "autoUpdateCheck") == nil || UserDefaults.standard.bool(forKey: "autoUpdateCheck") {
+        didSet { UserDefaults.standard.set(autoUpdateCheck, forKey: "autoUpdateCheck") }
+    }
+
     // MARK: Definitions
     var definitions: LoggerDefinitions?
     var definitionsError: String?
@@ -241,6 +250,7 @@ final class AppModel {
         } else if !defaults.bool(forKey: "setupWizardDone") {
             showWizard = true
         }
+        checkForUpdatesAtLaunch()
     }
 
     /// Shown on first launch and from the Car menu.

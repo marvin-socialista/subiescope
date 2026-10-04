@@ -40,6 +40,11 @@ struct SettingsView: View {
 
                 Toggle("Connect automatically when SubieScope opens", isOn: $model.autoConnect)
 
+                Toggle("Check for updates automatically", isOn: $model.autoUpdateCheck)
+                Text("Once a day when SubieScope opens, it asks GitHub for the newest version and tells you when there is one. Nothing about you or your car is sent. You can always look yourself with SubieScope > Check for Updates.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 if model.mode == .obd {
                     Toggle("Extended values (experimental)", isOn: $model.extendedValuesOn)
                     Text("Asks the car for manufacturer specific values such as AVCS (VVT) angles, knock and boost control, using OBD-II Mode 22. Only some cars answer, mostly newer Subarus, and the values come from community data, so check them against what you expect. Nothing is shown when your car does not answer.")

@@ -18,6 +18,8 @@ struct SubieScopeApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About SubieScope") { About.showPanel() }
+                Button("Check for Updates…") { Task { await model.checkForUpdates(manual: true) } }
+                    .disabled(model.checkingForUpdates)
             }
             CommandGroup(replacing: .help) {
                 Button("SubieScope on GitHub") { NSWorkspace.shared.open(Links.repository) }

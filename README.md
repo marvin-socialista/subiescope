@@ -95,6 +95,8 @@ What your car supports depends on its ECU:
 2. Open it and drag **SubieScope** to **Applications**. The app is signed and notarized by Apple, so it opens without warnings.
 3. On first launch a short **setup wizard** asks what car you have, recommends the right connection, walks you through connecting and testing it, and can start a demo car if you have no hardware yet. (In SSM mode SubieScope also downloads RomRaider's parameter definitions once, about 2 MB.)
 
+**Updates:** once a day when it opens, SubieScope asks GitHub for the newest version and shows what's new when there is one. Nothing about you or your car is sent. You can turn this off in Settings, or look yourself with **SubieScope > Check for Updates**.
+
 ## First drive
 
 1. Plug the cable (or Bluetooth adapter) into the OBD port under the dashboard (driver's side). For the cable, also plug it into your Mac.
