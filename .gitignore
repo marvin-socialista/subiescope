@@ -7,6 +7,10 @@ xcuserdata/
 # RomRaider definitions have no explicit license; scripts/fetch-definitions.sh downloads them.
 Sources/SSMKit/Resources/Definitions/*.xml
 
+# The website and its deploy settings (server address, SSH key), kept local
+/website/
+/keys/
+
 # Notes for AI assistants, kept local
 CLAUDE.md
 .claude/
