@@ -17,3 +17,9 @@ CLAUDE.md
 
 # The Android app is not open source: it has a private repository of its own in this folder.
 /android/
+
+# Unmodified copies of other projects' source, kept local as reference for porting
+/reference/
+
+# Logs and page snapshots from browser automation, kept local
+/.playwright-mcp/
