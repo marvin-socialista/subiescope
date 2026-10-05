@@ -36,8 +36,8 @@ public enum RecipeCatalog {
             title,
             "Let the engine idle in neutral with your foot off the pedal. Switch off the A/C, lights and blower.\(extra)",
             goal: .collect(seconds: seconds, whenever: Checks.atIdle),
-            watch: [Watch("rpm", expected: 600...1000), Watch("lambda", expected: 0.95...1.05), Watch("afc", expected: -10...10),
-                    Watch("afl", expected: -10...10), Watch("maf")],
+            watch: [Watch("rpm", expected: 600...1000), Watch("lambda", expected: 0.95...1.05), Watch("wideband", expected: 0.95...1.05),
+                    Watch("afc", expected: -10...10), Watch("afl", expected: -10...10), Watch("maf")],
             tips: [
                 Tip(when: { ($0["rpm"] ?? 0) >= 1200 }, "Take your foot off the pedal and let it idle."),
                 Tip(when: { ($0["rpm"] ?? 0) < 400 }, "The engine is off. Start it again."),
@@ -50,7 +50,8 @@ public enum RecipeCatalog {
             "Hold 2,500 rpm",
             "In neutral, press the pedal gently and hold the engine at about 2,500 rpm, as steady as you can.",
             goal: .hold(seconds: seconds, Checks.rpm(2200, 2900)),
-            watch: [Watch("rpm", expected: 2200...2900), Watch("lambda", expected: 0.95...1.05), Watch("maf"), Watch("rearO2")],
+            watch: [Watch("rpm", expected: 2200...2900), Watch("lambda", expected: 0.95...1.05), Watch("wideband", expected: 0.95...1.05),
+                    Watch("maf"), Watch("rearO2")],
             tips: [
                 Tip(when: { ($0["rpm"] ?? 0) < 1200 && ($0["rpm"] ?? 0) > 400 }, "Press the pedal to raise the engine to about 2,500 rpm."),
                 Tip(when: { let r = $0["rpm"] ?? 0; return r >= 1200 && r < 2200 }) { r in "A little more: \(fmt(r["rpm"], 0)) rpm, aim for 2,500." },
@@ -64,7 +65,7 @@ public enum RecipeCatalog {
             "Rev and let go",
             "In neutral, blip the throttle quickly to about 4,000 rpm and then let go of the pedal completely. Wait until it is back at idle and repeat, three times in total.",
             goal: .collect(seconds: seconds, whenever: Checks.running),
-            watch: [Watch("rpm"), Watch("lambda"), Watch("rearO2")],
+            watch: [Watch("rpm"), Watch("lambda"), Watch("wideband"), Watch("rearO2")],
             tips: [
                 Tip(when: { let r = $0["rpm"] ?? 0; let th = $0["throttle"] ?? 0; return th > 5 && r < 3000 }, "Keep going: rev to about 4,000 rpm, then let go completely."),
                 Tip(when: { ($0["rpm"] ?? 0) > 5000 }, "That's high enough: about 4,000 rpm is plenty."),
@@ -119,6 +120,8 @@ public enum RecipeCatalog {
         conditions: ["Car parked, handbrake on, gearbox in neutral", "A/C, lights and blower off", "The engine may be cold: the test warms it up first"],
         minutes: 5,
         probes: [P.rpm, P.coolant, P.lambda, opt(P.afc), opt(P.afl), opt(P.throttle), opt(P.afHeater)],
+        // This test is about the car's own sensor: a wideband gauge is a second opinion, not a replacement.
+        widebandRole: .secondOpinion,
         steps: [warmUpStep(), idleStep(seconds: 30), hold2500Step(seconds: 20), revReleaseStep(seconds: 15)],
         lookFor: ["Warm idle should average λ 1.00 (AFR 14.7)",
                   "The reading keeps moving: a dead sensor draws a flat line",
@@ -135,6 +138,9 @@ public enum RecipeCatalog {
             f += Checks.frontSensorActivity(warm)
             f += Checks.idleLambda(idle)
             f += Checks.frontSensorResponse(warm)
+            if a.available.contains(Probes.wideband.key) {
+                f += Checks.secondOpinion(steady: DataSet(rows: idle.rows + steady.rows), all: warm)
+            }
             // Trims say more about air/fuel delivery than about the sensor: cap them at a warning here.
             f += Checks.trimPattern(idle: Checks.totalTrim(idle), higher: steady.isEmpty ? nil : Checks.totalTrim(steady), higherLabel: "2,500 rpm")
                 .map { var x = $0; if x.severity == .fail { x.severity = .warning }; x.detail += " Run the Mass airflow sensor (MAF) test to dig deeper."; return x }

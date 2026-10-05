@@ -22,7 +22,7 @@ struct CableSteps: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(cables) { cable in
-                        CableRow(cable: cable)
+                        CableRow(cable: cable, openPortOn: model.openPortOn)
                     }
                 }
             }
@@ -70,16 +70,17 @@ struct CableSteps: View {
     private func scan() {
         cables = CableScanner.scan()
         if selectedPath == nil || !cables.contains(where: { $0.serialPath == selectedPath }) {
-            selectedPath = cables.first(where: { $0.serialPath != nil && $0.chip != .openPort2 })?.serialPath
+            selectedPath = cables.first(where: { model.canUse($0) })?.serialPath
         }
     }
 
     private func runTest() {
         guard let path = selectedPath else { return }
+        let openPort = cables.first { $0.serialPath == path }?.chip == .openPort2
         testing = true
         outcome = nil
         Task.detached {
-            let result = CableTest.run(path: path)
+            let result = CableTest.run(path: path, openPort: openPort)
             await MainActor.run {
                 outcome = result
                 testing = false
@@ -169,17 +170,20 @@ struct SetupStep<Content: View>: View {
 
 struct CableRow: View {
     let cable: USBCable
+    /// Whether the (experimental) support for a Tactrix OpenPort is turned on in Settings.
+    var openPortOn = false
 
     var body: some View {
+        let usable = cable.isUsable(openPortSupport: openPortOn)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Image(systemName: cable.serialPath != nil ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(cable.serialPath != nil && cable.chip != .openPort2 ? .green : .orange)
+                    .foregroundStyle(usable ? .green : .orange)
                 Text(cable.productName ?? "USB cable").font(.body.weight(.medium))
                 Text("· \(cable.chip.name)").foregroundStyle(.secondary)
             }
-            if let path = cable.serialPath, cable.chip != .openPort2 {
-                Text("Ready as \((path as NSString).lastPathComponent). \(cable.chip == .ftdi ? "No driver needed." : "")")
+            if let path = cable.serialPath, usable {
+                Text("Ready as \((path as NSString).lastPathComponent). \(cable.chip == .ftdi ? "No driver needed." : cable.chip == .openPort2 ? "Experimental: not tested with a real OpenPort yet." : "")")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {

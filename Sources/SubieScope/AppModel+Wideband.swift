@@ -17,6 +17,9 @@ extension AppModel {
         return selectedPortID == Self.demoPortID ? nil : selectedPortID
     }
 
+    /// The troubleshooting tests use the gauge: only while it is turned on at all.
+    var recipesUseWideband: Bool { widebandOn && testsUseWideband }
+
     /// The ports the gauge can be on.
     var widebandPorts: [SerialPortInfo] { ports.filter { $0.path != carPortPath } }
 
@@ -98,10 +101,12 @@ extension AppModel {
         }
     }
 
-    /// Adds the gauge's newest reading to a sample from the car, in the units chosen for it.
+    /// Adds the gauge's newest reading to a sample from the car, in the units chosen for it. A running
+    /// test that reads the gauge gets it in the units the test works in, like its values from the car.
     func addWideband(to sample: inout Sample) {
-        guard let reader = widebandReader, let parameter = parametersByID[AEMWideband.parameterID],
-              let conversion = conversion(for: parameter) else { return }
+        guard let reader = widebandReader, let parameter = parametersByID[AEMWideband.parameterID] else { return }
+        let inTest = recipeRun.flatMap { $0.isRunning ? $0.binding.widebandConversion : nil }
+        guard let conversion = inTest ?? conversion(for: parameter) else { return }
         // A gauge that went quiet shows as a gap, not as its last number.
         if !reader.add(to: &sample, conversion: conversion) { latest[parameter.id] = nil }
     }

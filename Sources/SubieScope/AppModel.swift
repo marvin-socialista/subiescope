@@ -17,7 +17,7 @@ struct ConsoleLine: Identifiable {
 }
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case dashboard, logger, recipes, diagnostics, ecuInfo, logs, dyno, console
+    case dashboard, logger, recipes, diagnostics, ecuInfo, logs, dyno, rom, console
     var id: String { rawValue }
 
     var title: String {
@@ -29,6 +29,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .ecuInfo: return "ECU Info"
         case .logs: return "Recorded Logs"
         case .dyno: return "Virtual Dyno"
+        case .rom: return "ROM Editor"
         case .console: return "Console"
         }
     }
@@ -42,6 +43,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .ecuInfo: return "cpu"
         case .logs: return "doc.text.magnifyingglass"
         case .dyno: return "chart.line.uptrend.xyaxis"
+        case .rom: return "memorychip"
         case .console: return "terminal"
         }
     }
@@ -83,6 +85,17 @@ final class AppModel {
     var isDemo = false
     private var session: SSMSession?
     private var demoECU: DemoECU?
+    /// A simulated Tactrix OpenPort between the app and the demo car (testing: -demoCable openport).
+    private var demoOpenPort: SimulatedOpenPort?
+    /// Experimental: use a Tactrix OpenPort 2.0 as the cable in SSM mode.
+    var openPortOn: Bool = UserDefaults.standard.bool(forKey: "openPortOn") {
+        didSet {
+            UserDefaults.standard.set(openPortOn, forKey: "openPortOn")
+            refreshPorts()
+        }
+    }
+    /// The SSM session while connected through a Tactrix OpenPort, for reading a ROM over its CAN side.
+    var openPortSession: SSMSession? { session?.openPort == nil ? nil : session }
 
     // MARK: Connection mode (SSM cable or OBD-II adapter)
     var mode: ConnectionMode = .saved {
@@ -132,6 +145,34 @@ final class AppModel {
     var extendedSearching = false
     /// Names of adapters seen while scanning, by identifier.
     var rememberedAdapterNames: [String: String] = [:]
+    /// Reading and editing a ROM is advanced and risky, so the ROM Editor is hidden until the user
+    /// turns this on and accepts the warning. Off by default; only set true after the warning is shown.
+    var advancedMode: Bool = UserDefaults.standard.bool(forKey: "advancedMode") {
+        didSet {
+            UserDefaults.standard.set(advancedMode, forKey: "advancedMode")
+            if !advancedMode && section == .rom { section = .dashboard }
+        }
+    }
+    /// Presents the Advanced-mode warning that must be accepted before it turns on.
+    var showAdvancedDisclaimer = false
+
+    // MARK: Reading a ROM from the car (advanced, OBD-II + STN adapter only)
+    /// Whether the connected OBD-II adapter is an STN chip (OBDLink EX). nil until it has been checked.
+    /// Only an STN adapter can read a ROM; a plain ELM327 clone cannot do the ISO-TP transfer reliably.
+    var obdAdapterIsSTN: Bool?
+    /// True while the adapter type is being probed.
+    var checkingAdapterType = false
+    /// True while a ROM read is running.
+    var romReadInProgress = false
+    /// 0...1 progress of the running read (it reads about 1 MB slowly).
+    var romReadProgress: Double = 0
+    /// A short line about what the read is doing, or how it ended.
+    var romReadStatus: String?
+    /// Set when the last read failed, for red styling; nil on success or while running.
+    var romReadError: String?
+    /// Lets the ROM read be stopped from the UI while it runs on the adapter's queue.
+    @ObservationIgnored let romReadCancel = CancelFlag()
+
     var remoteControlOn: Bool = UserDefaults.standard.bool(forKey: "remoteControl") {
         didSet {
             UserDefaults.standard.set(remoteControlOn, forKey: "remoteControl")
@@ -157,6 +198,10 @@ final class AppModel {
             UserDefaults.standard.set(widebandPortID, forKey: "widebandPort")
             if connection.isConnected { startWideband() }
         }
+    }
+    /// The troubleshooting tests read the mixture from the gauge instead of the car's own A/F sensor.
+    var testsUseWideband: Bool = UserDefaults.standard.bool(forKey: "testsUseWideband") {
+        didSet { UserDefaults.standard.set(testsUseWideband, forKey: "testsUseWideband") }
     }
     /// What the gauge's listener is doing. nil while it is not running.
     var widebandState: WidebandReader.State?
@@ -185,7 +230,13 @@ final class AppModel {
     // MARK: Selection (persisted)
     var loggedIDs: Set<String> = [] { didSet { persistSelection(); selectionChanged() } }
     var dashboardIDs: [String] = [] { didSet { persistSelection(); selectionChanged() } }
-    var unitChoice: [String: String] = [:] { didSet { persistSelection(); selectionChanged() } }
+    var unitChoice: [String: String] = [:] {
+        didSet {
+            persistSelection()
+            forgetLive(Set(oldValue.keys).union(unitChoice.keys).filter { oldValue[$0] != unitChoice[$0] })
+            selectionChanged()
+        }
+    }
     /// Style and size per dashboard gauge, keyed by parameter ID.
     var tileConfigs: [String: TileConfig] = [:] {
         didSet {
@@ -195,10 +246,10 @@ final class AppModel {
     }
     /// Pressures in kPa, bar or psi whatever the units setting says.
     var pressureUnit: PressureUnit = PressureUnit(rawValue: UserDefaults.standard.string(forKey: "pressureUnit") ?? "") ?? .automatic {
-        didSet { UserDefaults.standard.set(pressureUnit.rawValue, forKey: "pressureUnit"); selectionChanged() }
+        didSet { UserDefaults.standard.set(pressureUnit.rawValue, forKey: "pressureUnit"); forgetLive(); selectionChanged() }
     }
     var unitSystem: UnitSystem = .metric {
-        didSet { UserDefaults.standard.set(unitSystem.rawValue, forKey: "unitSystem"); selectionChanged() }
+        didSet { UserDefaults.standard.set(unitSystem.rawValue, forKey: "unitSystem"); forgetLive(); selectionChanged() }
     }
 
     // MARK: Live data
@@ -211,6 +262,11 @@ final class AppModel {
     private var sampleCounter = 0
     private var pointCounter = 0
     private var rateWindow: [Date] = []
+    /// Counts the sets of values asked from the car. A sample or an error that was already on its way when
+    /// the set changed or the connection ended carries the old number and is dropped: its values are in the
+    /// old set's units (a test's first row would read 190 °F as 190 °C), and its error belongs to a
+    /// connection that is gone.
+    @ObservationIgnored var pollEpoch = 0
     private var liveStart = Date()
     private var restartTask: Task<Void, Never>?
 
@@ -273,9 +329,9 @@ final class AppModel {
         refreshPorts()
         if mode == .obd && !safeStart { startBLEScan() }
         applyRemoteControl()
-        if dashboardIDs.isEmpty { dashboardIDs = defaultDashboard(); applyDefaultTileConfigs() }
-        if loggedIDs.isEmpty { loggedIDs = Set(defaultLogged()) }
+        applyDefaultSelection()
         if let raw = defaults.string(forKey: "section"), let s = AppSection(rawValue: raw) { section = s }
+        if section == .rom && !advancedMode { section = .dashboard }   // the ROM editor is behind Advanced mode
         // Demo only: start with a simulated fault (e.g. -demoFault vacuumLeak).
         if let raw = defaults.string(forKey: "demoFault"), let fault = DemoFault(rawValue: raw) { demoFault = fault }
         if autoConnect && !safeStart && (mode == .obd ? selectedAdapterID != nil : selectedPortID != nil) {
@@ -325,8 +381,7 @@ final class AppModel {
         do {
             try await DefinitionsStore.download()
             loadDefinitions()
-            if dashboardIDs.isEmpty { dashboardIDs = defaultDashboard(); applyDefaultTileConfigs() }
-            if loggedIDs.isEmpty { loggedIDs = Set(defaultLogged()) }
+            applyDefaultSelection()
             log("Downloaded the RomRaider parameter definitions")
         } catch {
             definitionsError = "Could not download the parameter definitions: \(error.localizedDescription). Check the internet connection and try again, or choose a RomRaider logger XML in Settings."
@@ -344,12 +399,33 @@ final class AppModel {
     }
 
     private func applyDefinitions() {
-        guard let definitions else { return }
+        guard let definitions else {
+            // Not downloaded yet: nothing to offer, rather than the other connection type's values.
+            parameters = []
+            parametersByID = [:]
+            codeDefinitions = []
+            return
+        }
         let set = definitions.parameterSet(for: identity)
         let list = set.parameters + widebandParameters
         parameters = list
         parametersByID = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         codeDefinitions = set.diagnosticCodes
+    }
+
+    /// The standard gauges and logged values, when nothing usable is saved: nothing at all, or only values
+    /// this connection type does not have (saved once when the definitions were not there yet).
+    func applyDefaultSelection() {
+        guard !parameters.isEmpty else { return }   // nothing to choose from yet; this runs again when there is
+        let known: (String) -> Bool = { id in
+            self.parametersByID[id] != nil || (self.definitions != nil && self.equivalentID(for: id) != nil)
+        }
+        if !dashboardIDs.contains(where: known) {
+            if !tileConfigs.keys.contains(where: known) { tileConfigs = [:] }
+            dashboardIDs = defaultDashboard()
+            applyDefaultTileConfigs()
+        }
+        if !loggedIDs.contains(where: known) { loggedIDs = Set(defaultLogged()) }
     }
 
     /// A varied first-run layout, so the gauge styles are visible from the start.
@@ -545,9 +621,25 @@ final class AppModel {
         ports = SerialPortList.available()
         cables = CableScanner.scan()
         let valid = Set(ports.map(\.path)).union([Self.demoPortID])
-        if selectedPortID == nil || !valid.contains(selectedPortID!) {
-            selectedPortID = ports.first(where: { $0.isFTDI })?.path ?? ports.first(where: { $0.isUSB })?.path ?? ports.first?.path
+        // A Tactrix OpenPort is only picked by itself while its (experimental) support is on.
+        let usable = ports.filter { openPortOn || !$0.isOpenPort }
+        if selectedPortID == nil || !valid.contains(selectedPortID!) || (!openPortOn && isOpenPort(selectedPortID)) {
+            selectedPortID = usable.first(where: { $0.isFTDI })?.path ?? usable.first(where: { $0.isOpenPort })?.path
+                ?? usable.first(where: { $0.isUSB })?.path ?? usable.first?.path
         }
+    }
+
+    /// Whether the port at `path` is a Tactrix OpenPort 2.0.
+    func isOpenPort(_ path: String?) -> Bool {
+        guard let path, path != Self.demoPortID else { return false }
+        // A port plugged in after the last refresh is looked up fresh.
+        let port = ports.first { $0.path == path } ?? SerialPortList.available().first { $0.path == path }
+        return port?.isOpenPort ?? false
+    }
+
+    /// Whether SubieScope can connect through this cable right now.
+    func canUse(_ cable: USBCable) -> Bool {
+        cable.isUsable(openPortSupport: openPortOn)
     }
 
     var selectedPortLabel: String {
@@ -565,20 +657,39 @@ final class AppModel {
             if selectedPortID == nil { connection = .failed("No cable found. Plug in the USB cable and press Refresh.") }
             return
         }
+        if isOpenPort(portID) && !openPortOn {
+            connection = .failed("This cable is a Tactrix OpenPort 2.0. SubieScope's support for it is experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings first.")
+            return
+        }
         disconnect()
         playback?.pause()
         connection = .connecting
         pollError = nil
         do {
             var path = portID
+            var throughOpenPort = isOpenPort(portID)
             isDemo = portID == Self.demoPortID
             if isDemo {
                 let demo = try DemoECU.make(definitions: definitions)
                 demoECU = demo
                 path = demo.ecu.devicePath
+                // Testing without the cable: -demoCable openport puts a simulated OpenPort in between.
+                if UserDefaults.standard.string(forKey: "demoCable") == "openport" {
+                    let cable = try SimulatedOpenPort(ecu: demo.ecu)
+                    demoOpenPort = cable
+                    path = cable.devicePath
+                    throughOpenPort = true
+                }
             }
-            let session = SSMSession(portPath: path)
+            let session = SSMSession(portPath: path, openPort: throughOpenPort)
             session.fastPoll = fastPoll
+            if throughOpenPort {
+                // The cable's own conversation says the most when something does not work.
+                trafficLogBudget = 600
+                session.openPort?.log = { [weak self] line in
+                    Task { @MainActor in self?.logOpenPort(line) }
+                }
+            }
             session.transport.traffic = { [weak self] direction, bytes in
                 Task { @MainActor in self?.logTraffic(direction, bytes) }
             }
@@ -586,10 +697,14 @@ final class AppModel {
                 session.transport.onBreak = { demo.ecu.simulateBreak() }
             }
             self.session = session
-            log("Opening \(isDemo ? "demo ECU on \(path)" : path) at 4800 baud")
+            log("Opening \(isDemo ? "demo ECU on \(path)" : path) at 4800 baud\(throughOpenPort ? " through a Tactrix OpenPort 2.0 (experimental)" : "")")
             let identity = try await session.connect()
             self.identity = identity
             log("ECU answered: ECU ID \(identity.ecuID), system ID \(identity.systemIDString), \(identity.capabilities.count) capability bytes")
+            if let cable = session.openPort {
+                let volts = try? await session.run { _ in try cable.batteryVoltage() }
+                log("Tactrix OpenPort firmware \(cable.firmware ?? "?")" + (volts.map { String(format: ", car battery %.1f V", $0) } ?? ""))
+            }
             applyDefinitions()
             remapSelections()
             connection = .connected
@@ -608,32 +723,43 @@ final class AppModel {
             connection = .failed(error.localizedDescription)
             session?.close()
             session = nil
+            demoOpenPort?.stop()
+            demoOpenPort = nil
             demoECU?.stop()
             demoECU = nil
         }
     }
 
     func disconnect() {
+        pollEpoch += 1
         stopRecording()
         session?.stopPolling()
         session?.close()
         session = nil
+        demoOpenPort?.stop()
+        demoOpenPort = nil
         demoECU?.stop()
         demoECU = nil
         closeOBD()
         stopWideband()
         remoteHold = false
+        // A test that was running ends with what it has recorded, instead of a step that never moves again.
+        if let run = recipeRun, run.isRunning { stopRecipe(analyze: true) }
         if connection == .connected { log("Disconnected") }
         connection = .disconnected
         engineStatus = nil
-        if playback != nil {
-            lastPlaybackRow = -1
-            showPlaybackParameters()
-            applyPlayback(at: playback?.playhead ?? 0)
-        }
+        showPlaybackIfOpen()
         vin = nil
         vinState = "–"
         samplesPerSecond = 0
+    }
+
+    /// With a log open and no car connected, the gauges show the log again.
+    private func showPlaybackIfOpen() {
+        guard playback != nil else { return }
+        lastPlaybackRow = -1
+        showPlaybackParameters()
+        applyPlayback(at: playback?.playhead ?? 0)
     }
 
     // MARK: Polling
@@ -664,14 +790,39 @@ final class AppModel {
         let choice = unitChoice
         let system = unitSystem
         let pressure = pressureUnit
+        pollEpoch += 1
+        let epoch = pollEpoch
         session.startPolling(items: items, allParameters: parametersByID, conversionFor: { p in
             if let units = choice[p.id], let c = p.conversions.first(where: { $0.units == units }) { return c }
             return AppModel.preferredConversion(p.conversions, system: system, pressure: pressure)
         }, onSample: { [weak self] sample in
-            Task { @MainActor in self?.ingest(sample) }
+            Task { @MainActor in
+                guard let self, epoch == self.pollEpoch else { return }
+                self.ingest(sample)
+            }
         }, onError: { [weak self] error, fatal in
-            Task { @MainActor in self?.pollFailed(error, fatal: fatal) }
+            Task { @MainActor in
+                guard let self, epoch == self.pollEpoch else { return }
+                self.pollFailed(error, fatal: fatal)
+            }
         })
+    }
+
+    /// After a change of units the lowest and highest value and the line of the last minute are numbers in
+    /// the old units: they start again, for the values in `ids` or for all of them. Samples still on their
+    /// way are in the old units too, so they are dropped until the car is asked again.
+    private func forgetLive(_ ids: [String]? = nil) {
+        guard connection.isConnected, ids?.isEmpty != true else { return }
+        pollEpoch += 1
+        if let ids {
+            for id in ids {
+                extremes[id] = nil
+                history[id] = nil
+            }
+        } else {
+            extremes = [:]
+            history = [:]
+        }
     }
 
     func resetLive() {
@@ -727,6 +878,7 @@ final class AppModel {
         pollError = error.localizedDescription
         log("Poll error: \(error.localizedDescription)")
         if fatal {
+            pollEpoch += 1
             stopRecording()
             connection = .failed(mode == .obd ? "Lost contact with the adapter: \(error.localizedDescription)"
                                                : "Lost contact with the ECU: \(error.localizedDescription)")
@@ -734,6 +886,9 @@ final class AppModel {
             session = nil
             closeOBD()
             stopWideband()
+            // A test that was running ends here with what it has recorded, and an open log gets the gauges back.
+            if let run = recipeRun, run.isRunning { stopRecipe(analyze: true) }
+            showPlaybackIfOpen()
         }
     }
 
@@ -966,7 +1121,7 @@ final class AppModel {
     }
 
     func binding(for recipe: Recipe) -> RecipeBinding {
-        RecipeBinding(recipe: recipe, parameters: parameters)
+        RecipeBinding(recipe: recipe, parameters: parameters, useWideband: recipesUseWideband)
     }
 
     func startRecipe(_ recipe: Recipe) {
@@ -1031,11 +1186,11 @@ final class AppModel {
     func analyzeLog(_ url: URL, with recipe: Recipe) async {
         do {
             let log = try await Task.detached { try RecordedLog.load(url) }.value
-            let (data, available) = RecipeBinding.dataSet(for: recipe, log: log)
+            let (data, available, fromWideband) = RecipeBinding.dataSet(for: recipe, log: log, useWideband: recipesUseWideband)
             let missing = recipe.probes.filter { $0.required && !available.contains($0.key) }
-            let findings = missing.isEmpty
-                ? recipe.analyze(Analysis(log: data, available: available, context: RecipeContext(identity: identity)))
-                : []
+            var analysis = Analysis(log: data, available: available, context: RecipeContext(identity: identity))
+            analysis.mixtureFromWideband = fromWideband
+            let findings = missing.isEmpty ? recipe.findings(for: analysis) : []
             logAnalysis = LogAnalysisResult(recipe: recipe, logName: url.lastPathComponent, findings: findings, missing: missing)
         } catch {
             logAnalysis = LogAnalysisResult(recipe: recipe, logName: url.lastPathComponent,
@@ -1057,6 +1212,16 @@ final class AppModel {
         }
         guard consoleCapturesTraffic else { return }
         appendConsole(ConsoleLine(id: nextConsoleID(), time: Date(), kind: direction, text: bytes.hexString))
+    }
+
+    /// A line of the conversation with a Tactrix OpenPort: its commands, replies and message frames.
+    func logOpenPort(_ line: String) {
+        if trafficLogBudget > 0 {
+            trafficLogBudget -= 1
+            DiagnosticLog.shared.debug("openport", line)
+        }
+        guard consoleCapturesTraffic else { return }
+        appendConsole(ConsoleLine(id: nextConsoleID(), time: Date(), kind: nil, text: line))
     }
 
     func nextConsoleID() -> Int {

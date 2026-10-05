@@ -95,6 +95,35 @@ enum Checks {
         return [Finding(.pass, "A/F sensor signal is alive", "The reading moves as the ECU trims the mixture.", measured: "spread \(fmt(range, 3)) λ")]
     }
 
+    /// The car's front sensor next to a separate wideband gauge in the same exhaust. `steady` is warm
+    /// closed-loop running (idle, 2,500 rpm); `all` includes the blips, where a fuel cut shows on both.
+    static func secondOpinion(steady: DataSet, all: DataSet) -> [Finding] {
+        var out: [Finding] = []
+        // A sensor stuck at 1.00 agrees with the gauge at a steady idle by accident: the fuel cut tells them apart.
+        let missedFuelCut = all.max("lambda").flatMap { car in all.max("wideband").map { $0 >= 1.25 && car < 1.1 } } ?? false
+        let both = steady.filter { $0["lambda"] != nil && $0["wideband"] != nil }
+        if both.count >= 10, let car = both.mean("lambda"), let gauge = both.mean("wideband") {
+            let measured = "car λ \(fmt(car, 2)), gauge λ \(fmt(gauge, 2))"
+            if abs(car - gauge) <= 0.04 {
+                if !missedFuelCut {
+                    out.append(Finding(.pass, "Agrees with the wideband gauge",
+                                       "At a steady idle and 2,500 rpm both sensors read the same mixture.", measured: measured))
+                }
+            } else {
+                // Either of the two can be the one that is off, so this never fails the car's sensor by itself.
+                out.append(Finding(.warning, "Reads \(car > gauge ? "leaner" : "richer") than the wideband gauge",
+                                   "Two sensors in the same exhaust should read about the same while the engine runs steadily. One of them is off: an exhaust leak near either sensor, an aging sensor, or a gauge that needs calibrating.",
+                                   measured: measured))
+            }
+        }
+        if missedFuelCut, let car = all.max("lambda"), let gauge = all.max("wideband") {
+            out.append(Finding(.fail, "The wideband gauge saw the fuel cut, the car's sensor did not",
+                               "When you let go of the throttle the gauge went lean, so the engine did cut its fuel. The car's own sensor did not follow, which points at the sensor itself and not at how the test was done.",
+                               measured: "car max λ \(fmt(car, 2)), gauge max λ \(fmt(gauge, 2))"))
+        }
+        return out
+    }
+
     static func idleLambda(_ ds: DataSet) -> [Finding] {
         guard let m = ds.mean("lambda") else { return [] }
         let measured = "λ \(fmt(m, 3)) (AFR \(fmt(m * 14.7, 1)))"
@@ -421,7 +450,8 @@ enum Checks {
         // Where it happens
         if loadedEvents.count >= 2 {
             let bands = Dictionary(grouping: loadedEvents) { Int($0.rpm / 1000) }
-            if let (band, group) = bands.max(by: { $0.value.count < $1.value.count }) {
+            // A dictionary has no fixed order: with two bands just as busy, the lower one is named, every time.
+            if let (band, group) = bands.max(by: { ($0.value.count, -$0.key) < ($1.value.count, -$1.key) }) {
                 let full = group.filter { $0.throttle >= 85 }.count
                 let load = full * 2 >= group.count ? "at full throttle" : "at part throttle"
                 out.append(Finding(.info, "Most knock at \(band * 1000)–\((band + 1) * 1000) rpm \(load)",

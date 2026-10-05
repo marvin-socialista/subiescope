@@ -17,7 +17,7 @@ let package = Package(
         .target(
             name: "SSMKit",
             dependencies: ["CSerial"],
-            resources: [.copy("Resources/Definitions"), .copy("Resources/TroubleCodes"), .copy("Resources/ExtendedPIDs")],
+            resources: [.copy("Resources/Definitions"), .copy("Resources/TroubleCodes"), .copy("Resources/ExtendedPIDs"), .copy("Resources/Kernels")],
             linkerSettings: [.linkedFramework("IOKit")]
         ),
         .executableTarget(

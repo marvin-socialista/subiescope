@@ -2,10 +2,22 @@ import Foundation
 
 /// Runs a recipe against the simulated engine in virtual time: each step's demo
 /// scenario is acted out until the step's goal is met. Used by the tests to
-/// check that every recipe recognises the faults it is meant to find.
+/// check that every recipe recognises the faults it is meant to find. With
+/// `useWideband` the demo car has a wideband gauge in its exhaust, in the role
+/// the recipe gives it.
 public enum RecipeSimulator {
-    public static func simulate(_ recipe: Recipe, fault: DemoFault, hz: Double = 10, maxStepSeconds: Double = 240) -> Analysis {
+    public static func simulate(_ recipe: Recipe, fault: DemoFault, useWideband: Bool = false, hz: Double = 10,
+                                maxStepSeconds: Double = 240) -> Analysis {
         let world = DemoWorld(fault: fault)
+        let gauge = useWideband && recipe.probe("lambda") != nil
+        func sample(at t: Double) -> [String: Double] {
+            var v = world.sample(at: t)
+            guard gauge else { return v }
+            // What the gauge would send, read back the way the app reads it.
+            let reading = AEMWideband.lambda(fromLine: SimulatedWideband.text(for: world.exhaustLambda, output: .afr))
+            v[recipe.widebandRole == .mixture ? "lambda" : Probes.wideband.key] = reading
+            return v
+        }
         var t = 0.0
         var steps: [DataSet] = []
         var completed: [Bool] = []
@@ -19,7 +31,7 @@ public enum RecipeSimulator {
             let start = t
             while success == nil {
                 t += 1 / hz
-                let row = DataSet.Row(t: t, v: world.sample(at: t))
+                let row = DataSet.Row(t: t, v: sample(at: t))
                 rows.append(row)
                 let elapsed = t - start
                 switch step.goal {
@@ -39,7 +51,9 @@ public enum RecipeSimulator {
             steps.append(DataSet(rows: rows))
             completed.append(success ?? false)
         }
-        return Analysis(steps: steps, stepCompleted: completed, available: Set(recipe.probes.map(\.key)),
-                        context: RecipeContext(displacementLiters: 2.0))
+        var analysis = Analysis(steps: steps, stepCompleted: completed, available: Set(recipe.probes(useWideband: gauge).map(\.key)),
+                                context: RecipeContext(displacementLiters: 2.0))
+        analysis.mixtureFromWideband = gauge && recipe.widebandRole == .mixture
+        return analysis
     }
 }

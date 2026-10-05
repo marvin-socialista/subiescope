@@ -23,8 +23,7 @@ extension AppModel {
         tileConfigs = saved.tiles
         suppressPersist = false
         applyParameters()
-        if dashboardIDs.isEmpty { dashboardIDs = defaultDashboard(); applyDefaultTileConfigs() }
-        if loggedIDs.isEmpty { loggedIDs = Set(defaultLogged()) }
+        applyDefaultSelection()
         resetLive()
         currentCodes = []
         memorizedCodes = []
@@ -304,13 +303,21 @@ extension AppModel {
         let choice = unitChoice
         let system = unitSystem
         let pressure = pressureUnit
+        pollEpoch += 1
+        let epoch = pollEpoch
         session.startPolling(items: items, allParameters: parametersByID, conversionFor: { p in
             if let units = choice[p.id], let c = p.conversions.first(where: { $0.units == units }) { return c }
             return AppModel.preferredConversion(p.conversions, system: system, pressure: pressure)
         }, onSample: { [weak self] sample in
-            Task { @MainActor in self?.ingest(sample) }
+            Task { @MainActor in
+                guard let self, epoch == self.pollEpoch else { return }
+                self.ingest(sample)
+            }
         }, onError: { [weak self] error, fatal in
-            Task { @MainActor in self?.pollFailed(error, fatal: fatal) }
+            Task { @MainActor in
+                guard let self, epoch == self.pollEpoch else { return }
+                self.pollFailed(error, fatal: fatal)
+            }
         })
     }
 

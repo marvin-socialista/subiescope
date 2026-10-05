@@ -44,6 +44,9 @@ public enum Probes {
     public static let fanDuty = Probe("fanDuty", "Radiator Fan Control", units: "%", label: "Radiator fan control")
     public static let ac = Probe("ac", "Air Conditioning Switch", units: "on/off", label: "A/C switch")
 
+    /// A separate wideband gauge in the exhaust. Not in `all`: it is not a value the car reports.
+    public static let wideband = Probe("wideband", AEMWideband.definition.name, units: "Lambda", required: false, label: "Wideband gauge")
+
     public static let all: [Probe] = [
         rpm, coolant, iat, lambda, afc, afl, rearO2, rearHeater, afHeater, maf, mafV, map, mrp, target, wgdc,
         throttle, pedal, battery, speed, fbkc, flkc, iam, timing, ipw, load, rough1, rough2, rough3, rough4, isc,

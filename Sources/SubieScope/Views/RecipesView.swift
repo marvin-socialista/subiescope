@@ -114,6 +114,9 @@ struct RecipeDetailView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
                 }
+                if model.widebandOn && recipe.probe("lambda") != nil {
+                    WidebandChoice(recipe: recipe)
+                }
                 DetailSection(title: "What you'll do") {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(Array(recipe.steps.enumerated()), id: \.offset) { i, step in
@@ -194,6 +197,41 @@ struct RecipeDetailView: View {
         panel.message = "Choose a log to analyse with “\(recipe.title)”"
         if panel.runModal() == .OK, let url = panel.url {
             Task { await model.analyzeLog(url, with: recipe) }
+        }
+    }
+}
+
+/// For tests that look at the mixture, when a wideband gauge is turned on: read it from the gauge
+/// instead of the car's own A/F sensor. One choice for every test and for logs that are analysed.
+struct WidebandChoice: View {
+    @Environment(AppModel.self) private var model
+    let recipe: Recipe
+
+    var body: some View {
+        @Bindable var model = model
+        DetailSection(title: "Wideband gauge") {
+            Toggle(recipe.widebandRole == .mixture ? "Read the mixture from the wideband gauge" : "Compare the car's sensor with the wideband gauge",
+                   isOn: $model.testsUseWideband)
+                .disabled(model.recipeRun?.isRunning ?? false)
+            Text(explanation)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if model.testsUseWideband && model.widebandHasProblem {
+                Label(model.widebandStatusText, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var explanation: String {
+        switch recipe.widebandRole {
+        case .mixture:
+            return "Off: the tests read the mixture from the car's own front A/F sensor. On: they read it from your AEM gauge instead, which many owners trust more at full throttle. The choice applies to every test, and to logs you analyse that have the gauge in them."
+        case .secondOpinion:
+            return "This test is about the car's own sensor, so that stays the one being tested. With this on, your AEM gauge is read next to it and the result tells you whether the two agree. In the other tests the same switch makes the gauge the source of the mixture."
         }
     }
 }

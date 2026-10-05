@@ -14,13 +14,20 @@ commands:
   log                        Print live values (and optionally write a CSV)
   codes                      Read trouble codes
   demo                       Run the demo ECU on a pseudo terminal for testing
+  demo --openport            Run the demo ECU behind a simulated Tactrix OpenPort 2.0 instead
   demo --obd                 Run a simulated OBD-II adapter instead, as a USB cable and as a Wi-Fi adapter,
                              with a simulated AEM wideband gauge next to it
   remote <command>           Talk to a running SubieScope and its OBD-II adapter (see `remote help`)
+  rom <file>                 Inspect a ROM file: size, calibration ID and checksum state
+  rom fix <file> [out]       Correct the checksums in a ROM file and save (never touches the car)
+  rom maps <file> <defs.xml> List the maps this ROM has, using a RomRaider ecu_defs.xml
+  rom read <file> <defs.xml> "<map name>"   Print one map's values
 
 options:
   --port PATH                Serial device (default: first FTDI/USB port)
   --demo                     Use the built-in demo ECU instead of a cable
+  --openport                 The port is a Tactrix OpenPort 2.0 (experimental; a real one is recognised
+                             by itself). With --demo: put a simulated OpenPort in front of the demo ECU
   --scenario NAME            Demo only: what the demo car does (idle, cruise, wotPull, …)
   --fault NAME               Demo only: simulate a fault (dirtyMAF, vacuumLeak, knock, …)
   --defs FILE                RomRaider logger definition XML (default: built-in)
@@ -58,6 +65,9 @@ func loadDefinitions() -> LoggerDefinitions {
 }
 
 var demoECU: DemoECU?
+var demoOpenPort: SimulatedOpenPort?
+/// The chosen port is a Tactrix OpenPort 2.0 (experimental), not a KKL cable.
+var throughOpenPort = false
 
 func resolvePort(_ defs: LoggerDefinitions?) -> String {
     if flag("--demo") {
@@ -69,25 +79,35 @@ func resolvePort(_ defs: LoggerDefinitions?) -> String {
             if let name = option("--fault"), let fault = DemoFault(rawValue: name) {
                 demoECU!.setFault(fault)
             }
+            if flag("--openport") {
+                demoOpenPort = try SimulatedOpenPort(ecu: demoECU!.ecu)
+                throughOpenPort = true
+                return demoOpenPort!.devicePath
+            }
             return demoECU!.ecu.devicePath
         } catch {
             fail("could not start demo ECU: \(error.localizedDescription)")
         }
     }
-    if let port = option("--port") { return port }
     let ports = SerialPortList.available()
-    guard let port = ports.first(where: \.isFTDI) ?? ports.first(where: \.isUSB) else {
+    if let port = option("--port") {
+        throughOpenPort = flag("--openport") || ports.contains { $0.path == port && $0.isOpenPort }
+        return port
+    }
+    guard let port = ports.first(where: \.isFTDI) ?? ports.first(where: \.isOpenPort) ?? ports.first(where: \.isUSB) else {
         fail("no USB serial cable found. Plug in the cable, or pass --port /dev/cu.… (see `subiescope-cli ports`)")
     }
+    throughOpenPort = flag("--openport") || port.isOpenPort
     return port.path
 }
 
 func makeSession(_ defs: LoggerDefinitions?, verbose: Bool) -> SSMSession {
     let path = resolvePort(defs)
-    let session = SSMSession(portPath: path)
+    let session = SSMSession(portPath: path, openPort: throughOpenPort)
     session.fastPoll = !flag("--no-fast")
     if let demoECU { session.transport.onBreak = { demoECU.ecu.simulateBreak() } }
     if verbose {
+        session.openPort?.log = { print("  cable      \($0)") }
         session.transport.traffic = { direction, bytes in
             let arrow: String
             switch direction {
@@ -99,7 +119,7 @@ func makeSession(_ defs: LoggerDefinitions?, verbose: Bool) -> SSMSession {
             print("  \(arrow) \(bytes.hexString)")
         }
     }
-    print("Port: \(path)\(demoECU != nil ? " (demo ECU)" : "")")
+    print("Port: \(path)\(demoECU != nil ? " (demo ECU)" : "")\(throughOpenPort ? " (Tactrix OpenPort 2.0, experimental)" : "")")
     return session
 }
 
@@ -125,6 +145,7 @@ case "ports":
     for p in ports {
         var tags: [String] = []
         if p.isFTDI { tags.append("FTDI") }
+        if p.isOpenPort { tags.append("Tactrix OpenPort 2.0") }
         if let v = p.vendorID, let pid = p.productID { tags.append(String(format: "USB %04X:%04X", v, pid)) }
         if let s = p.serialNumber { tags.append("serial \(s)") }
         print("\(p.path)\t\(p.productName ?? "")\t\(tags.joined(separator: ", "))")
@@ -140,6 +161,10 @@ case "probe":
     print("Car:           \(EngineDiagnostics.knownECUs[identity.ecuID] ?? "not in the 2008 STI list")")
     print("System ID:     \(identity.systemIDString) (\(EngineDiagnostics.engineType(systemID: identity.systemID) ?? "unknown engine"))")
     print("Capabilities:  \(identity.capabilities.count) bytes: \(identity.capabilities.hexString)")
+    if let cable = session.openPort {
+        let volts = blocking { try await session.run { _ in try cable.batteryVoltage() } }
+        print("Cable:         Tactrix OpenPort 2.0, firmware \(cable.firmware ?? "?"), car battery \(String(format: "%.1f", volts)) V")
+    }
     if let defs {
         let set = defs.parameterSet(for: identity)
         let count = { (k: ParameterKind) in set.parameters.filter { $0.kind == k }.count }
@@ -269,6 +294,125 @@ case "demo" where flag("--obd"):
     print("  -widebandOn YES -widebandPort \(gauge.devicePath)")
     fflush(stdout)   // so the path shows up when the output goes to a file or a pipe
     withExtendedLifetime((usb, wifi, gauge)) { while true { Thread.sleep(forTimeInterval: 1) } }
+
+case "rom":
+    // Works on a file only. It never opens a serial port or talks to a car.
+    func describe(_ rom: ROMImage, path: String) {
+        print("File:          \(path)")
+        print("Size:          \(rom.byteCount) bytes" + (rom.size.map { " (\($0.label))" } ?? " (not a standard Subaru ROM size)"))
+        print("Calibration:   \(rom.calibrationID() ?? "unknown (may not be a Subaru 32-bit ROM)")")
+        print("Fingerprint:   \(rom.quickFingerprint)")
+        if let report = try? SubaruChecksum.verifyPetrol(rom) {
+            if report.allDisabled {
+                print("Checksums:     all disabled in this ROM")
+            } else if report.ok {
+                print("Checksums:     OK (\(report.records.filter { !$0.isBlank }.count) active regions)")
+            } else {
+                print("Checksums:     \(report.mismatchCount) of \(report.records.filter { !$0.isBlank }.count) regions do NOT match. Run `rom fix` after editing.")
+            }
+        } else {
+            print("Checksums:     no checksum layout known for this size")
+        }
+    }
+
+    func loadDefs(_ path: String, _ rom: ROMImage) -> (ROMDefinitionSet, ROMDefinition) {
+        guard let set = try? ROMDefinitionParser.load(url: URL(fileURLWithPath: path)) else {
+            fail("could not read the definitions \(path)")
+        }
+        guard let def = set.definition(matching: rom) else {
+            fail("no definition in \(path) matches this ROM's internal ID (calibration \(rom.calibrationID() ?? "unknown"))")
+        }
+        return (set, def)
+    }
+
+    let sub = args.first
+    if sub == "defcheck" {
+        // Parses a RomRaider ecu_defs.xml and reports what came out, for checking against the real file.
+        guard args.count >= 2 else { fail("usage: subiescope-cli rom defcheck <defs.xml> [xmlid]") }
+        guard let set = try? ROMDefinitionParser.load(url: URL(fileURLWithPath: args[1])) else { fail("could not parse \(args[1])") }
+        print("Definitions: \(set.definitions.count)   Shared scalings: \(set.scalings.count)")
+        let withID = set.definitions.values.filter { $0.identity.internalIDString != nil }.count
+        print("With an internal ID (matchable): \(withID)")
+        if args.count >= 3 {
+            let tables = set.resolvedTables(forXmlID: args[2])
+            let editable = tables.filter { $0.isEditable }
+            print("\(args[2]): \(tables.count) tables, \(editable.count) editable")
+            for t in editable.prefix(12) {
+                let dims = t.dimension == .threeD ? "\(t.sizeX)x\(t.sizeY)" : (t.dimension == .twoD ? "\(t.sizeX)" : "1")
+                print("  [\(t.category)] \(t.name) (\(dims)) @0x\(String(t.address ?? 0, radix: 16))")
+            }
+        } else {
+            // Show a few example ROM IDs to try.
+            for def in set.definitions.values.filter({ $0.identity.internalIDString != nil }).prefix(6) {
+                print("  e.g. \(def.identity.xmlID)  base=\(def.identity.base ?? "-")")
+            }
+        }
+    } else if sub == "maps" {
+        guard args.count >= 3 else { fail("usage: subiescope-cli rom maps <file> <defs.xml>") }
+        guard let rom = try? ROMImage(contentsOf: URL(fileURLWithPath: args[1])) else { fail("could not read \(args[1])") }
+        let (set, def) = loadDefs(args[2], rom)
+        let tables = set.resolvedTables(forXmlID: def.identity.xmlID).filter { $0.isEditable }
+        print("Matched \(def.identity.xmlID); \(tables.count) maps:")
+        var lastCategory = ""
+        for t in tables {
+            let category = t.category.isEmpty ? "Other" : t.category
+            if category != lastCategory { print("  [\(category)]"); lastCategory = category }
+            let dims = t.dimension == .threeD ? "\(t.sizeX)x\(t.sizeY)" : (t.dimension == .twoD ? "\(t.sizeX)" : "1")
+            print("    \(t.name)  (\(dims))")
+        }
+    } else if sub == "read" {
+        guard args.count >= 4 else { fail("usage: subiescope-cli rom read <file> <defs.xml> \"<map name>\"") }
+        guard let rom = try? ROMImage(contentsOf: URL(fileURLWithPath: args[1])) else { fail("could not read \(args[1])") }
+        let (set, def) = loadDefs(args[2], rom)
+        let name = args[3]
+        guard let tableDef = set.resolvedTables(forXmlID: def.identity.xmlID).first(where: { $0.name == name }) else {
+            fail("no map named \"\(name)\" in this ROM")
+        }
+        guard let table = try? ROMTable.read(rom, def: tableDef, scalings: set.scalings) else {
+            fail("could not read the map \"\(name)\"")
+        }
+        print("\(table.def.name)  [\(table.units)]  format \(table.format)")
+        for r in 0..<table.rows {
+            let prefix = (table.def.dimension == .threeD && r < table.yLabels.count) ? String(format: "%8.2f | ", table.yLabels[r]) : ""
+            print(prefix + table.values[r].map { String(format: "%8.2f", $0) }.joined(separator: " "))
+        }
+    } else if sub == "fix" {
+        guard args.count >= 2 else { fail("usage: subiescope-cli rom fix <file> [output file]") }
+        let inPath = args[1]
+        let outPath = args.count >= 3 ? args[2] : inPath.replacingOccurrences(of: ".bin", with: "") + "-fixed.bin"
+        guard let rom = try? ROMImage(contentsOf: URL(fileURLWithPath: inPath)) else { fail("could not read \(inPath)") }
+        print(ROMDisclaimer.short)
+        print("")
+        guard let (fixed, report) = try? SubaruChecksum.correctPetrol(rom) else {
+            fail("no checksum layout for this ROM size (\(rom.byteCount) bytes)")
+        }
+        if report.allDisabled {
+            print("This ROM has its checksums disabled; nothing to correct.")
+        } else if report.ok && fixed == rom {
+            print("Checksums were already correct; wrote an identical copy.")
+        } else {
+            print("Corrected \(rom.quickFingerprint) → \(fixed.quickFingerprint); checksums now OK.")
+        }
+        do {
+            try fixed.write(to: URL(fileURLWithPath: outPath))
+            print("Saved to \(outPath)")
+        } catch { fail("could not write \(outPath): \(error.localizedDescription)") }
+    } else {
+        guard let path = sub else { fail("usage: subiescope-cli rom <file>   (or: rom fix <file> [out])") }
+        guard let rom = try? ROMImage(contentsOf: URL(fileURLWithPath: path)) else { fail("could not read \(path)") }
+        describe(rom, path: path)
+    }
+
+case "demo" where flag("--openport"):
+    // Stands in for the Tactrix OpenPort nobody has on the desk, with the demo car on its K-line.
+    let defs = try? LoggerDefinitions.bundled()
+    guard let demo = try? DemoECU.make(definitions: defs), let cable = try? SimulatedOpenPort(ecu: demo.ecu) else {
+        fail("could not start the simulated OpenPort")
+    }
+    print("Simulated Tactrix OpenPort 2.0 with the demo ECU (JDM GRB STI) on \(cable.devicePath). Ctrl-C to stop.")
+    print("Try: subiescope-cli probe --openport --port \(cable.devicePath)")
+    fflush(stdout)
+    withExtendedLifetime((demo, cable)) { while true { Thread.sleep(forTimeInterval: 1) } }
 
 case "demo":
     let defs = try? LoggerDefinitions.bundled()

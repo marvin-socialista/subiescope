@@ -102,7 +102,9 @@ public final class RecipeRunner {
 
     /// Analysis over the data gathered so far (for "finish early").
     public func analyzeNow() -> [Finding] {
-        recipe.analyze(Analysis(steps: stepData, stepCompleted: stepCompleted, available: binding.available, context: context))
+        var analysis = Analysis(steps: stepData, stepCompleted: stepCompleted, available: binding.available, context: context)
+        analysis.mixtureFromWideband = binding.mixtureFromWideband
+        return recipe.findings(for: analysis)
     }
 
     private func finishStep(completed: Bool) {

@@ -32,6 +32,7 @@ SubieScope talks to the engine ECU over Subaru's SSM protocol, the same one the 
 - **Trouble codes**: read current and stored codes with an explanation, possible causes and fixes for each code, copy them or save them as a PDF or text file, and clear the ECU memory.
 - **Log playback**: replay any log on the gauges, scrub through it and hover the charts to see every value at that moment. It also opens RomRaider logs, including ones written by Dutch or German Windows installs.
 - **Virtual dyno**: turns a full-throttle pull into wheel horsepower and torque curves, tells you whether the pull was good or should be redone, and compares pulls.
+- **ROM editor** (Advanced mode): open a ROM file you already have, or read the ROM from the car (experimental), see its maps by name, edit them, correct the Subaru checksums and save to a new file. Editing happens in a file on your Mac, and SubieScope never writes to the car. It is off by default and lives behind Advanced mode (Settings), which you turn on after accepting a warning. See [below](#rom-editor-advanced-mode).
 - **Cable setup**: finds your cable, tells you whether it needs a driver, and tests the connection step by step.
 
 <table>
@@ -66,6 +67,7 @@ OBD-II mode is new and has been tested against a simulated adapter and car. Repo
 - For **Subaru SSM**: a **VAG KKL 409.1 USB cable with an FTDI FT232RL chip**, about €10–15 online. macOS already has the FTDI driver, so there's nothing to install.
   - Avoid cables with a CH340 chip: they're known to be unreliable with Subarus.
   - Cables with a switch: use the position that puts K-line on pin 7.
+  - Already have a **Tactrix OpenPort 2.0**? It can be used instead of the KKL cable, as an experiment: see [below](#tactrix-openport-20-experimental).
   - A Subaru that speaks SSM over K-line (see below).
 - For **OBD-II**: an ELM327 adapter with **Bluetooth 4.0 (BLE)**, such as the Vgate iCar Pro BLE 4.0. The first time, macOS asks whether SubieScope may use Bluetooth.
   - **USB and Wi-Fi ELM327 adapters** are experimental, see [below](#usb-and-wi-fi-adapters-experimental). Bluetooth Classic adapters are not supported.
@@ -118,6 +120,8 @@ The app bundle also contains `subiescope-cli`, which is handy at the car or for 
 /Applications/SubieScope.app/Contents/MacOS/subiescope-cli probe     # connect and show the raw traffic
 /Applications/SubieScope.app/Contents/MacOS/subiescope-cli log --csv pull.csv --seconds 30
 /Applications/SubieScope.app/Contents/MacOS/subiescope-cli codes     # read trouble codes
+/Applications/SubieScope.app/Contents/MacOS/subiescope-cli rom tune.bin        # inspect a ROM file
+/Applications/SubieScope.app/Contents/MacOS/subiescope-cli rom fix tune.bin    # correct its checksums (file only)
 ```
 
 Add `--demo` to any command to use the simulated car. `subiescope-cli demo --obd` runs a simulated OBD-II adapter as a USB port and as a Wi-Fi address on your own Mac, for trying the app's USB and Wi-Fi connections without the hardware. It also runs a simulated AEM wideband gauge on a port of its own.
@@ -166,9 +170,35 @@ Have an AEM wideband air/fuel gauge in the car? SubieScope can read it at the sa
 - **Wiring:** the gauge's **blue** wire is its serial output. Connect it to pin 2 (receive) of the adapter's 9-pin plug, and pin 5 (ground) to the gauge's ground.
 - **In the app:** turn on **Settings > Wideband > Log an AEM wideband gauge** and pick the adapter's port. SubieScope starts listening when you connect to the car. "AEM Wideband A/F" appears at the top of the Logger, already ticked; add it to the Dashboard with the gauge button, and choose AFR or lambda like for any other value.
 
+**In the troubleshooting tests:** with the gauge turned on, the tests that look at the mixture get a switch, "Read the mixture from the wideband gauge". The full-throttle pull, the knock check and the others then judge the mixture your AEM gauge measures instead of the car's own front A/F sensor, and the result says so. The Front A/F sensor test is the exception: it is about the car's own sensor, so there the gauge is a second opinion next to it, and the result tells you whether the two agree. "Analyze a Log…" follows the same switch for logs that have the gauge in them.
+
 The gauge sends about ten readings per second, and the newest one is added to every sample from the car. If the gauge stops sending (ignition off, a loose wire), the log shows a gap instead of a number that no longer moves. The connection panel and Settings > Wideband tell you whether readings are coming in.
 
 This is new and has been tested against a simulated gauge only, not against a real one. The demo car has a simulated gauge in its exhaust, so you can see how it works without any hardware: turn the option on and connect to the demo car. If yours does not work, **Help > Send Diagnostic Report…** shows what the gauge sent, and reports that it does work are just as welcome.
+
+## Tactrix OpenPort 2.0 (experimental)
+
+Have a Tactrix OpenPort 2.0 from tuning your car? In Subaru SSM mode it can take the place of the KKL cable: the dashboard, the logger, trouble codes, the troubleshooting tests and the dyno all work the same.
+
+- **No driver needed.** Tactrix only makes a driver for Windows, but on a Mac the cable shows up as a plain USB serial port, and SubieScope talks to it directly.
+- **Take the microSD card out of the cable first.** With a card in, it shows up as a USB disk and not as a cable.
+- **In the app:** turn on **Settings > General > Tactrix OpenPort 2.0 cable** (or press "Turn On OpenPort Support" in the connection panel when it is plugged in), then press Connect. **Car > Cable Setup** tests it step by step. The OpenPort measures the car's battery, so SubieScope can tell a cable that is not in the car from an ignition that is off.
+- **Which cars:** the same ones as with the KKL cable, see [Supported cars](#supported-cars). The newer, CAN-only cars still need OBD-II mode.
+
+This is new and has **not been tested with a real OpenPort yet**: only against a simulated cable, built from how other open-source projects describe it. It may well not work on yours. If it does not, **Help > Send Diagnostic Report…** shows what the cable answered, and `subiescope-cli probe` prints the whole conversation. Reports that it does work are just as welcome. If logging stalls, turn off Settings > General > Fast poll.
+
+## ROM editor (Advanced mode)
+
+The ROM editor is off by default. Turn on **Settings > Advanced mode** (you have to accept a warning first) and the ROM Editor appears in the sidebar. It works on a **ROM file on your Mac**: one you already have (for example read with FastECU or EcuFlash), or one SubieScope reads from the car. It opens the file, identifies it, shows its maps by name, lets you edit them (or raw bytes), corrects the Subaru Denso checksums, and saves to a new file.
+
+> **ROM editing is for advanced users and entirely at your own risk.** The numbers in a ROM decide how much fuel and boost the engine runs and when it ignites. A wrong change can make the engine knock, run lean or be damaged, and that is not covered by any warranty. Tuning may also be against the law for a car used on public roads where you live. Only change values you understand, always keep the original file, and treat every number as yours to answer for.
+
+- **It never writes to the car.** Editing and saving only change a file on your Mac. SubieScope cannot flash a ROM back to the car: to put an edited one on, you still need another tool (such as FastECU or EcuFlash) and the right hardware.
+- **Read the ROM from the car (experimental)**: the "Read from car" card copies the ROM out of the engine ECU and loads it into the editor. It is for the 2008 and later Subarus with a Denso SH7058 ECU on the CAN bus, such as the 2008+ STI. You need an OBDLink or other STN-based adapter in OBD-II mode (a plain ELM327 cannot do it), or a [Tactrix OpenPort 2.0](#tactrix-openport-20-experimental). A KKL cable cannot do it. Ignition on, engine off, a healthy battery, and leave the car alone until it finishes: it takes several minutes. SubieScope loads a small helper program into the ECU's memory, which copies the ROM out. It only reads: it never erases or writes the ECU's program, and the helper program is gone once you turn the ignition off and on again. This has **not been tested on a real car yet**, only against a simulated ECU, so it may not work on yours and you use it at your own risk. If it fails, **Help > Send Diagnostic Report…** shows where it stopped.
+- **Maps by name**: SubieScope downloads RomRaider's `ecu_defs.xml` (from the project's own [definitions](definitions/) folder, credited to RomRaider), matches your ROM by its internal ID, and shows its maps (fuel, timing, boost and the rest) as tables with their axes and real-world units. Edit a cell and the value is scaled back and written. A definition is applied automatically only on an exact internal-ID match; otherwise it suggests the closest ones for you to confirm, and you can always point it at your own `ecu_defs.xml`. Raw byte editing is there too, for anything a definition does not cover.
+- **Checksums**: after you edit a map the ROM's checksums no longer add up, and an ECU rejects a ROM whose checksums are wrong. The editor recomputes them for the petrol Denso SH7055 and SH7058 families (this covers the 2008+ STI). Diesel and Hitachi ROMs are not handled yet.
+
+The checksum maths, the ROM layout facts and the steps for reading a ROM from the car are a port of [FastECU](https://github.com/miikasyvanen/FastECU) (GPLv3); the map definition format is RomRaider's. SubieScope reads the definitions and does the scaling itself; the whole path (match a ROM, resolve the definition's base inheritance, read a scaled table, write a value back) is covered by tests.
 
 ## When something goes wrong
 
@@ -181,7 +211,7 @@ The OBD-II mode is built to keep going when a car or adapter is quirky: values a
 - Do full-throttle pulls and driving tests **only on a closed road, a track or a dyno**. Let a passenger watch the screen.
 - The troubleshooting results are rules of thumb from logged data, **not a replacement for a proper diagnosis**. When in doubt, ask a Subaru specialist and bring the log.
 - **Clear memory** erases stored trouble codes and resets what the ECU has learned (fuel trims, IAM). The car relearns within a few drives.
-- SubieScope only reads the ECU, apart from clearing memory. It never flashes or changes the ECU's program.
+- SubieScope only reads the ECU, apart from clearing memory. It never flashes or changes the ECU's program. The ROM editor edits a file on your Mac, never the car. Reading a ROM from the car (Advanced mode, experimental) loads a small helper program into the ECU's memory to copy the ROM out; that program is gone after you turn the ignition off and on again.
 
 ## Build from source
 
@@ -200,7 +230,7 @@ How the code is organised:
 
 | Path | What's there |
 |---|---|
-| `Sources/SSMKit` | The engine, with no UI: serial port, SSM2 protocol, RomRaider definitions parser, polling and fast-poll session, CSV logs, the wideband gauge reader, troubleshooting tests, virtual dyno, and the simulated ECU |
+| `Sources/SSMKit` | The engine, with no UI: serial port, SSM2 protocol, the Tactrix OpenPort, RomRaider definitions parser, polling and fast-poll session, CSV logs, the wideband gauge reader, troubleshooting tests, virtual dyno, and the simulated ECU |
 | `Sources/SubieScope` | The SwiftUI app |
 | `Sources/SubieScopeCLI` | `subiescope-cli` |
 | `Tests/SSMKitTests` | Tests, including an end-to-end run over a pseudo-terminal and every troubleshooting test against simulated faults |
@@ -213,6 +243,9 @@ RomRaider's definitions file has no explicit license, so it isn't in this reposi
 - [RomRaider](https://github.com/RomRaider/RomRaider) and its community: the SSM logger protocol, fast polling, the logger definitions with extended parameters for hundreds of ECUs, and the serial formats of the AEM wideband gauges.
 - [OBDb](https://github.com/OBDb) (Subaru signal sets for Impreza, WRX, Forester, Outback and Crosstrek): the Mode 22 extended value definitions. That data is licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); the bundled file `Sources/SSMKit/Resources/ExtendedPIDs/subaru_mode22.json` keeps that license and is generated by `scripts/generate-extended-pids.py`.
 - Subaru Diesel Crew ([ParsePID](https://github.com/giotec/ParsePID), GPLv3): how Subaru ECUs list the Mode 22 values they support, and where they report their ROM ID.
+- [FastECU](https://github.com/miikasyvanen/FastECU) by Miika Syvänen (GPLv3): the ROM editor's Subaru Denso checksum maths, where Subaru keeps its calibration ID and checksum tables, and the steps for reading a ROM from a Denso SH7058 ECU over CAN. Also how a Tactrix OpenPort is set up for a Subaru's K-line and CAN bus.
+- nisprog and npkern by [fenugrec](https://github.com/fenugrec), and the Subaru version by [rimwall](https://github.com/rimwall) (GPLv3): the helper program that copies the ROM out of the ECU. The bundled file `Sources/SSMKit/Resources/Kernels/ssmk_can_tp_sh7058.bin` is the one that ships with FastECU, unchanged.
+- [openport-j2534](https://github.com/bisak/openport-j2534) by Biser Atanasov (GPL-3.0-or-later): how a computer talks to a Tactrix OpenPort 2.0, measured on a real cable. SubieScope's OpenPort support is written from those notes.
 
 ## Support
 

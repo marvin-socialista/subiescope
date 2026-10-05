@@ -27,14 +27,15 @@ public enum SSMError: Error, LocalizedError, Equatable {
 /// Raw traffic hook for the debug console.
 public enum SSMTrafficDirection: Sendable { case sent, echo, received, garbage }
 
-/// Sends SSM2 requests over a K-line serial cable and returns the matching reply.
+/// Sends SSM2 requests over the K-line and returns the matching reply.
 ///
 /// K-line is a single wire, so KKL cables hear their own transmission: every
 /// request comes back as an echo before the ECU's answer. Instead of assuming
 /// the echo is present, incoming bytes are parsed into frames and only the frame
-/// addressed to the tester is accepted.
+/// addressed to the tester is accepted. That also makes it work over a Tactrix
+/// OpenPort 2.0, which leaves the echo out.
 public final class SSMTransport {
-    public let port: SerialPort
+    public let line: SSMLine
     public var baudRate: UInt32
     /// Extra time allowed for the ECU to start answering.
     public var responseTimeout: TimeInterval = 0.5
@@ -45,9 +46,13 @@ public final class SSMTransport {
     private var lastExchangeEnd = Date.distantPast
     private var pending: [UInt8] = []
 
-    public init(port: SerialPort, baudRate: UInt32 = 4800) {
-        self.port = port
+    public init(line: SSMLine, baudRate: UInt32 = 4800) {
+        self.line = line
         self.baudRate = baudRate
+    }
+
+    public convenience init(port: SerialPort, baudRate: UInt32 = 4800) {
+        self.init(line: port, baudRate: baudRate)
     }
 
     /// Seconds needed to shift `bytes` bytes over the wire (8N1 = 10 bits per byte).
@@ -65,10 +70,10 @@ public final class SSMTransport {
         if sinceLast < interRequestDelay {
             Thread.sleep(forTimeInterval: interRequestDelay - sinceLast)
         }
-        port.discardInput()
+        line.discardInput()
         pending.removeAll()
         traffic?(.sent, bytes)
-        try port.write(bytes)
+        try line.write(bytes)
         defer { lastExchangeEnd = Date() }
 
         // Budget: echo of our request + the reply, plus ECU think time.
@@ -111,10 +116,10 @@ public final class SSMTransport {
                 }
                 return frame
             }
-            let chunk = try port.read(count: 1, timeout: max(0.001, deadline.timeIntervalSinceNow))
+            let chunk = try line.read(count: 1, timeout: max(0.001, deadline.timeIntervalSinceNow))
             if chunk.isEmpty { break }
             var more = chunk
-            more.append(contentsOf: try port.readAvailable(timeout: 0.0005, idle: 0.0005))
+            more.append(contentsOf: try line.readAvailable(timeout: 0.0005, idle: 0.0005))
             received += more.count
             pending.append(contentsOf: more)
         }
@@ -128,18 +133,15 @@ public final class SSMTransport {
     /// Ends continuous mode: a BREAK of one character time, then wait until the ECU
     /// has gone quiet (RomRaider's clearLine).
     public func stopContinuous() {
-        let breakTime = max(0.02, wireTime(1))
-        try? port.setBreak(true)
-        Thread.sleep(forTimeInterval: breakTime)
-        try? port.setBreak(false)
+        line.interrupt(for: max(0.02, wireTime(1)))
         onBreak?()
         let deadline = Date().addingTimeInterval(1.0)
         while Date() < deadline {
-            let drained = (try? port.readAvailable(timeout: 0.06, idle: 0.03)) ?? []
+            let drained = (try? line.readAvailable(timeout: 0.06, idle: 0.03)) ?? []
             if drained.isEmpty { break }
         }
         pending.removeAll()
-        port.discardInput()
+        line.discardInput()
     }
 
     /// Finds the first frame in `buffer`. Returns (frame, bytesConsumed); frame is nil

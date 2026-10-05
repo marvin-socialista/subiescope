@@ -27,30 +27,43 @@ public final class SSMSession: @unchecked Sendable {
     public let transport: SSMTransport
     public let client: SSMClient
     public private(set) var identity: ECUIdentity?
+    /// The Tactrix OpenPort 2.0 this session talks through, or nil with a KKL cable. Use it only
+    /// inside `run`, so it is not spoken to from two places at once.
+    public let openPort: OpenPort?
 
-    private let port: SerialPort
+    private let line: SSMLine
     private let queue = DispatchQueue(label: "subiescope.ssm.io", qos: .userInitiated)
     private var plan: PollPlan?
     private var pollGeneration = 0
     private var consecutiveErrors = 0
 
-    public init(portPath: String, baudRate: UInt32 = 4800) {
+    /// `openPort` says the port is a Tactrix OpenPort 2.0 (experimental) instead of a KKL cable.
+    public init(portPath: String, baudRate: UInt32 = 4800, openPort: Bool = false) {
         self.portPath = portPath
-        self.port = SerialPort(path: portPath)
-        self.transport = SSMTransport(port: port, baudRate: baudRate)
+        let line: SSMLine
+        if openPort {
+            let device = OpenPort(path: portPath)
+            self.openPort = device
+            line = OpenPortKLine(device: device)
+        } else {
+            self.openPort = nil
+            line = SerialPort(path: portPath)
+        }
+        self.line = line
+        self.transport = SSMTransport(line: line, baudRate: baudRate)
         self.client = SSMClient(transport: transport)
     }
 
     deinit {
-        port.close()
+        line.close()
     }
 
     /// Opens the port and identifies the ECU, retrying a few times because the
     /// first request after plugging in is sometimes lost.
     public func connect(attempts: Int = 3) async throws -> ECUIdentity {
         try await run { [self] client in
-            if !port.isOpen {
-                try port.open(baud: transport.baudRate)
+            if !line.isOpen {
+                try line.open(baud: transport.baudRate)
                 // Let the transceiver settle after DTR/RTS came up.
                 Thread.sleep(forTimeInterval: 0.1)
             }
@@ -66,6 +79,11 @@ public final class SSMSession: @unchecked Sendable {
                     lastError = error
                     if attempt < attempts - 1 { Thread.sleep(forTimeInterval: 0.3) }
                 }
+            }
+            // An OpenPort measures the car's battery, which tells a silent ECU from a cable that is
+            // not plugged into the car.
+            if let openPort, case SSMError.timeout = lastError, let volts = try? openPort.batteryVoltage(), volts < 6 {
+                throw OpenPortError.noCarPower(volts: volts)
             }
             throw lastError
         }
@@ -87,7 +105,7 @@ public final class SSMSession: @unchecked Sendable {
             pollGeneration += 1
             plan = nil
             stopStreaming()
-            port.close()
+            line.close()
         }
     }
 

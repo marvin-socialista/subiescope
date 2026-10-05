@@ -148,6 +148,14 @@ public enum RecipeSetting: String, Sendable, CaseIterable {
     public var label: String { self == .parked ? "In the garage" : "On the road" }
 }
 
+/// What a separate wideband gauge is to a recipe, when the tests are set to use one.
+public enum WidebandRole: Sendable {
+    /// The mixture ("lambda") is read from the gauge instead of the car's front A/F sensor.
+    case mixture
+    /// The recipe is about the car's own sensor: the gauge is read next to it ("wideband"), as a second opinion.
+    case secondOpinion
+}
+
 /// Engine facts some checks need.
 public struct RecipeContext: Sendable {
     public var displacementLiters: Double
@@ -169,6 +177,8 @@ public struct Analysis: Sendable {
     public var all: DataSet
     public var available: Set<String>
     public var context: RecipeContext
+    /// "lambda" in this data is a separate wideband gauge, not the car's front A/F sensor.
+    public var mixtureFromWideband = false
 
     public init(steps: [DataSet], stepCompleted: [Bool], available: Set<String>, context: RecipeContext) {
         self.steps = steps
@@ -205,6 +215,7 @@ public struct Recipe: Identifiable, Sendable {
     public var safety: String?
     public var minutes: Int
     public var probes: [Probe]
+    public var widebandRole: WidebandRole
     public var steps: [RecipeStep]
     /// What the analysis looks at, in plain words.
     public var lookFor: [String]
@@ -223,7 +234,7 @@ public struct Recipe: Identifiable, Sendable {
 
     public init(id: String, setting: RecipeSetting, title: String, symbol: String, category: String, summary: String,
                 symptoms: [String] = [], conditions: [String] = [], safety: String? = nil, minutes: Int,
-                probes: [Probe], steps: [RecipeStep], lookFor: [String] = [],
+                probes: [Probe], widebandRole: WidebandRole = .mixture, steps: [RecipeStep], lookFor: [String] = [],
                 headlines: (pass: String, warning: String, fail: String),
                 analyze: @escaping @Sendable (Analysis) -> [Finding]) {
         self.headlines = headlines
@@ -238,12 +249,45 @@ public struct Recipe: Identifiable, Sendable {
         self.safety = safety
         self.minutes = minutes
         self.probes = probes
+        self.widebandRole = widebandRole
         self.steps = steps
         self.lookFor = lookFor
         self.analyze = analyze
     }
 
     public func probe(_ key: String) -> Probe? { probes.first { $0.key == key } }
+
+    /// The values the recipe reads when the tests use a separate wideband gauge: the gauge takes the place
+    /// of the car's front A/F sensor, or is read next to it. A recipe that never looks at the mixture is unchanged.
+    public func probes(useWideband: Bool) -> [Probe] {
+        guard useWideband, let sensor = probe("lambda") else { return probes }
+        switch widebandRole {
+        case .mixture:
+            var gauge = Probes.wideband
+            gauge.key = sensor.key
+            gauge.required = sensor.required
+            return probes.map { $0.key == sensor.key ? gauge : $0 }
+        case .secondOpinion:
+            return probes + [Probes.wideband]
+        }
+    }
+
+    /// The analysis, plus a line about the wideband gauge when the mixture came from it, so a result
+    /// always says which sensor it trusted.
+    public func findings(for analysis: Analysis) -> [Finding] {
+        var findings = analyze(analysis)
+        guard analysis.mixtureFromWideband else { return findings }
+        if analysis.all.has("lambda") {
+            findings.append(Finding(.info, "Mixture read from the wideband gauge",
+                                    "Where this test shows or judges the air/fuel mixture, it used your AEM wideband gauge instead of the car's own front A/F sensor."))
+        } else {
+            // Only a test that needs the mixture is held up by a silent gauge.
+            findings.insert(Finding(probe("lambda")?.required == true ? .warning : .info, "No reading from the wideband gauge",
+                                    "The test was set to take the mixture from your wideband gauge, but no readings arrived, so the mixture was not judged. Check the gauge in Settings > Wideband, or switch this test back to the car's own sensor."),
+                            at: 0)
+        }
+        return findings
+    }
 
     /// Overall result: the worst finding, ignoring info.
     public static func verdict(_ findings: [Finding]) -> Severity {
@@ -261,16 +305,28 @@ public struct RecipeBinding: Sendable {
 
     public var bound: [String: Bound]
     public var missing: [Probe]
+    /// The keys of `bound` in the order of the recipe's probes; a dictionary has no order of its own.
+    private var order: [String] = []
 
     public var missingRequired: [Probe] { missing.filter(\.required) }
     public var isRunnable: Bool { missingRequired.isEmpty }
     public var available: Set<String> { Set(bound.keys) }
 
-    /// Matches probes against live parameters, preferring a conversion in the canonical units.
-    public init(recipe: Recipe, parameters: [ParameterDefinition]) {
+    /// How the wideband gauge is read for this recipe, when it is one of its values.
+    public var widebandConversion: Conversion? {
+        bound.values.first { $0.parameter.id == AEMWideband.parameterID }?.conversion
+    }
+    /// The mixture ("lambda") comes from the wideband gauge instead of the car's front A/F sensor.
+    public var mixtureFromWideband: Bool { bound["lambda"]?.parameter.id == AEMWideband.parameterID }
+
+    /// Matches probes against live parameters, preferring a conversion in the canonical units. With
+    /// `useWideband`, a wideband gauge among the parameters gets the role the recipe gives it.
+    public init(recipe: Recipe, parameters: [ParameterDefinition], useWideband: Bool = false) {
         var bound: [String: Bound] = [:]
+        var order: [String] = []
         var missing: [Probe] = []
-        for probe in recipe.probes {
+        let gauge = useWideband && parameters.contains { $0.id == AEMWideband.parameterID }
+        for probe in recipe.probes(useWideband: gauge) {
             guard let p = ParameterResolver.resolve(probe.concept, in: parameters), !p.conversions.isEmpty else {
                 missing.append(probe)
                 continue
@@ -278,15 +334,19 @@ public struct RecipeBinding: Sendable {
             let conversion = p.conversions.first { $0.units.caseInsensitiveCompare(probe.units) == .orderedSame }
                 ?? p.conversions.first { UnitNormalizer.convert(1, from: $0.units, to: probe.units) != nil }
                 ?? p.conversions[0]
+            if bound[probe.key] == nil { order.append(probe.key) }
             bound[probe.key] = Bound(probe: probe, parameter: p, conversion: conversion)
         }
         self.bound = bound
         self.missing = missing
+        self.order = order
     }
 
+    /// What to ask the car for, in the order of the recipe's probes, so a recipe's log always has its
+    /// columns in the same order.
     public var pollItems: [PollItem] {
         var seen = Set<String>()
-        return bound.values.compactMap { b in
+        return order.compactMap { bound[$0] }.compactMap { b in
             let key = b.parameter.id + "|" + b.conversion.units
             guard seen.insert(key).inserted else { return nil }
             return PollItem(parameter: b.parameter, conversion: b.conversion)
@@ -303,29 +363,32 @@ public struct RecipeBinding: Sendable {
         return DataSet.Row(t: t, v: v)
     }
 
-    /// Maps a recorded log's columns onto the recipe's probes.
-    public static func dataSet(for recipe: Recipe, log: RecordedLog) -> (DataSet, available: Set<String>) {
-        var columnFor: [String: (Int, String)] = [:]
+    /// Maps a recorded log's columns onto the recipe's probes. With `useWideband`, a wideband gauge
+    /// column in the log gets the role the recipe gives it; a log without one is read as usual.
+    public static func dataSet(for recipe: Recipe, log: RecordedLog, useWideband: Bool = false)
+        -> (DataSet, available: Set<String>, mixtureFromWideband: Bool) {
+        var columnFor: [String: (Int, String, Probe)] = [:]
         let columns = log.columns.enumerated().map { i, c in
             ParameterDefinition(id: "C\(i)", name: c.name, kind: .standard, conversions: [Conversion(units: c.units, expression: "x")])
         }
-        for probe in recipe.probes {
+        let gauge = useWideband && ParameterResolver.resolve(Probes.wideband.concept, in: columns) != nil
+        for probe in recipe.probes(useWideband: gauge) {
             if let p = ParameterResolver.resolve(probe.concept, in: columns), let i = Int(p.id.dropFirst()) {
-                columnFor[probe.key] = (i, log.columns[i].units)
+                columnFor[probe.key] = (i, log.columns[i].units, probe)
             }
         }
         var rows: [DataSet.Row] = []
         rows.reserveCapacity(log.rowCount)
         for r in 0..<log.rowCount {
             var v: [String: Double] = [:]
-            for (key, (i, units)) in columnFor {
+            for (key, (i, units, probe)) in columnFor {
                 let raw = log.values[i][r]
-                guard raw.isFinite, let probe = recipe.probe(key) else { continue }
+                guard raw.isFinite else { continue }
                 v[key] = UnitNormalizer.convert(raw, from: units, to: probe.units) ?? raw
             }
             rows.append(DataSet.Row(t: log.time[r], v: v))
         }
-        return (DataSet(rows: rows), Set(columnFor.keys))
+        return (DataSet(rows: rows), Set(columnFor.keys), gauge && recipe.widebandRole == .mixture && columnFor["lambda"] != nil)
     }
 }
 

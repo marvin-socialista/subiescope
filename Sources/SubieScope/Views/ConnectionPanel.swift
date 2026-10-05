@@ -211,9 +211,12 @@ struct ConnectionStatus {
     let color: Color
 
     init(model: AppModel) {
-        let cable = model.cables.first { $0.serialPath != nil && $0.chip != .openPort2 }
+        let cable = model.cables.first { model.canUse($0) }
         let driverless = model.cables.first { $0.serialPath == nil }
-        if model.isPlayingBack, let playback = model.playback {
+        // A lost connection is said even with a log open: "Playing log" alone would hide why the gauges stopped.
+        var lost = false
+        if case .failed = model.connection { lost = true }
+        if model.isPlayingBack, let playback = model.playback, !lost {
             badge = "Playing log"
             title = "Playing back a log"
             detail = "\(playback.url.lastPathComponent) · \(formatLogTime(playback.playhead)) / \(formatLogTime(playback.duration))"
@@ -322,7 +325,7 @@ struct ConnectionPanel: View {
     var body: some View {
         @Bindable var model = model
         let status = ConnectionStatus(model: model)
-        let cable = model.cables.first { $0.serialPath != nil && $0.chip != .openPort2 }
+        let cable = model.cables.first { model.canUse($0) }
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
                 StatusDot(color: status.color, pulsing: model.connection.isConnected)
@@ -358,8 +361,15 @@ struct ConnectionPanel: View {
                     ForEach(model.cables) { c in
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(c.productName ?? "USB cable") · \(c.chip.name)").font(.callout.weight(.medium))
-                            if let path = c.serialPath {
-                                Text("Ready as \((path as NSString).lastPathComponent)\(c.chip == .ftdi ? ", no driver needed" : "")")
+                            if c.chip == .openPort2, c.serialPath != nil, !model.openPortOn {
+                                Text("SubieScope's support for the OpenPort is new and experimental. It has not been tested with a real one yet.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Button("Turn On OpenPort Support") { model.openPortOn = true }
+                                    .controlSize(.small)
+                                    .disabled(model.connection.isConnected)
+                            } else if let path = c.serialPath {
+                                Text("Ready as \((path as NSString).lastPathComponent)\(c.chip == .ftdi ? ", no driver needed" : c.chip == .openPort2 ? " (experimental)" : "")")
                                     .font(.caption).foregroundStyle(.secondary)
                             } else {
                                 Text(c.chip.driverAdvice).font(.caption).foregroundStyle(.orange)

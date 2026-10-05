@@ -52,12 +52,28 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Toggle("Advanced mode (ROM reading and editing)", isOn: Binding(
+                    get: { model.advancedMode },
+                    set: { wantsOn in
+                        if wantsOn { model.showAdvancedDisclaimer = true }   // ask first; enable only on accept
+                        else { model.advancedMode = false }
+                    }))
+                Text("Unlocks the ROM Editor: opening and editing a ROM file (an ECU tune) on your Mac, and reading the ROM from the car with an OBDLink adapter or a Tactrix OpenPort. It never writes to the car. It is risky and for advanced users, so you have to accept a warning before it turns on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Toggle("Let the command line tool control the app (developer)", isOn: $model.remoteControlOn)
                 Text("Lets programs you run on this Mac send read-only requests to the connected adapter through subiescope-cli. Off by default. Nothing that clears codes or writes to the car gets through.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if model.mode == .ssm {
+                    Toggle("Tactrix OpenPort 2.0 cable (experimental)", isOn: $model.openPortOn)
+                        .disabled(model.connection.isConnected)
+                    Text("Lets you connect with a Tactrix OpenPort 2.0 instead of a KKL cable. It needs no driver: plug it in and press Connect. Take the microSD card out of the cable first. This is new and has not been tested with a real OpenPort yet, so it may not work on yours. With Advanced mode on, it can also read the ROM from the car.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
                     Toggle("Fast poll (continuous mode)", isOn: $model.fastPoll)
                     Text("The ECU keeps sending values without being asked each time, roughly doubling the sample rate. Turn it off if logging stalls.")
                         .font(.caption)

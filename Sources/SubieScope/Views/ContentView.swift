@@ -19,6 +19,9 @@ struct ContentView: View {
                 Section("Files") {
                     Label(AppSection.logs.title, systemImage: AppSection.logs.symbol).tag(AppSection.logs)
                     Label(AppSection.dyno.title, systemImage: AppSection.dyno.symbol).tag(AppSection.dyno)
+                    if model.advancedMode {
+                        Label(AppSection.rom.title, systemImage: AppSection.rom.symbol).tag(AppSection.rom)
+                    }
                 }
                 Section("Tools") {
                     Label(AppSection.console.title, systemImage: AppSection.console.symbol).tag(AppSection.console)
@@ -39,6 +42,7 @@ struct ContentView: View {
                 case .ecuInfo: ECUInfoView()
                 case .logs: LogsView()
                 case .dyno: DynoView()
+                case .rom: if model.advancedMode { ROMView() } else { AdvancedLockedView() }
                 case .console: ConsoleView()
                 }
             }
@@ -54,6 +58,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $model.showWizard) {
             SetupWizardView().environment(model)
+        }
+        .sheet(isPresented: $model.showAdvancedDisclaimer) {
+            AdvancedModeDisclaimer().environment(model)
         }
         .sheet(item: $model.updateOffer) { release in
             UpdateView(release: release).environment(model)
@@ -133,5 +140,76 @@ struct RecordButton: View {
         }
         .help(model.isRecording ? "Stop recording (⌘R)" : "Record the logged parameters to a CSV file (⌘R)")
         .disabled(!model.connection.isConnected || model.loggedIDs.isEmpty)
+    }
+}
+
+/// Shown in place of the ROM editor when Advanced mode is off, so the section explains itself rather
+/// than being silently empty (e.g. if opened by a keyboard shortcut or a launch argument).
+struct AdvancedLockedView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            Text("ROM reading and editing is in Advanced mode")
+                .font(.title3.weight(.semibold))
+            Text("This is for reading a ROM (an ECU tune) from the car and editing it on your Mac. It is risky and separate from the normal logging and diagnostics, so it is off until you turn it on.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 440)
+            Button { model.showAdvancedDisclaimer = true } label: {
+                Label("Turn On Advanced Mode…", systemImage: "exclamationmark.shield")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The warning the user must accept before Advanced mode (ROM reading and editing) turns on.
+struct AdvancedModeDisclaimer: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Turn on Advanced mode?", systemImage: "exclamationmark.triangle.fill")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.orange)
+            Text("Advanced mode unlocks the ROM Editor: reading a ROM (an ECU tune) from a file or from the car, and editing it on your Mac.")
+                .font(.headline)
+            ScrollView {
+                Text(ROMDisclaimer.full)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 240)
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.3), lineWidth: 1))
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button {
+                    model.advancedMode = true
+                    model.section = .rom
+                    dismiss()
+                } label: {
+                    Label("I Understand, Turn It On", systemImage: "checkmark.shield")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+            }
+        }
+        .padding(22)
+        .frame(width: 560)
     }
 }

@@ -22,7 +22,12 @@ public struct SerialPortInfo: Identifiable, Hashable, Sendable {
         self.serialNumber = serialNumber
     }
 
-    public var isFTDI: Bool { vendorID == 0x0403 }
+    /// A Tactrix OpenPort 2.0. It carries FTDI's vendor number but is not an FTDI serial cable.
+    public var isOpenPort: Bool {
+        guard let vendorID, let productID else { return false }
+        return CableChip(vendorID: vendorID, productID: productID) == .openPort2
+    }
+    public var isFTDI: Bool { vendorID == 0x0403 && !isOpenPort }
     public var isUSB: Bool { vendorID != nil }
 
     /// Ports macOS always has that are never a diagnostic cable.

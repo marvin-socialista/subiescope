@@ -8,7 +8,8 @@ import Foundation
 /// checksum, with romraider.com as fallback) into Application Support.
 public enum DefinitionsStore {
     public static let fileName = "logger_METRIC_EN_v370.xml"
-    static let mirror = URL(string: "https://raw.githubusercontent.com/zhuker/dash22b/3a9f6fa45a2a2885733fca185ae2c2490338dac0/app/src/main/assets/logger_METRIC_EN_v370.xml")!
+    // Hosted in the SubieScope repo (definitions/), pinned to a commit and verified by checksum.
+    static let mirror = URL(string: "https://raw.githubusercontent.com/marvin-socialista/subiescope/35773756d1750d7762bd605215afe19d9a8a7c13/definitions/logger_METRIC_EN_v370.xml")!
     /// SHA-256 of the official file with CR characters removed.
     static let sha256LF = "1fb44a6438bf64979ea44e4302306d598da3bd33009da13cf383d7acaa5a964c"
     static let forumPage = URL(string: "https://www.romraider.com/forum/")!

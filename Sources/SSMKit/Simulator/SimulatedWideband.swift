@@ -95,13 +95,15 @@ public final class SimulatedWideband: @unchecked Sendable {
         guard active else { return nil }
         if silent { return [] }
         if garbled { return [0xF8, 0x00, 0x7E, 0xFC, 0xE0] }
-        let lambda = mixture()
-        let line: String
+        return Array((Self.text(for: mixture(), output: output) + (output == .lambdaWithStatus ? "\r" : "\r\n")).utf8)
+    }
+
+    /// What the gauge sends for a mixture, without the line end: its display, which stops at the ends of its range.
+    public static func text(for lambda: Double, output: Output) -> String {
         switch output {
-        case .afr: line = String(format: "%.1f\r\n", min(20, max(8, lambda * AEMWideband.stoich)))
-        case .lambda: line = String(format: "%.2f\r\n", min(2, max(0.55, lambda)))
-        case .lambdaWithStatus: line = String(format: "%.3f\tReady\tNo-errors\r", min(2, max(0.55, lambda)))
+        case .afr: return String(format: "%.1f", min(20, max(8, lambda * AEMWideband.stoich)))
+        case .lambda: return String(format: "%.2f", min(2, max(0.55, lambda)))
+        case .lambdaWithStatus: return String(format: "%.3f\tReady\tNo-errors", min(2, max(0.55, lambda)))
         }
-        return Array(line.utf8)
     }
 }

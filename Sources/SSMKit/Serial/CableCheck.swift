@@ -16,12 +16,18 @@ public struct USBCable: Identifiable, Hashable, Sendable {
     public var serialPath: String?
 
     public var chip: CableChip { CableChip(vendorID: vendorID, productID: productID) }
+
+    /// Whether SubieScope can connect through it right now. A Tactrix OpenPort only counts when its
+    /// (experimental) support is turned on.
+    public func isUsable(openPortSupport: Bool) -> Bool {
+        serialPath != nil && (chip != .openPort2 || openPortSupport)
+    }
 }
 
 public enum CableChip: Sendable, Hashable {
     case ftdi, ch340, pl2303, cp210x, openPort2, unknown
 
-    init(vendorID: Int, productID: Int) {
+    public init(vendorID: Int, productID: Int) {
         switch (vendorID, productID) {
         case (0x0403, 0xCC4C), (0x0403, 0xCC4D): self = .openPort2
         case (0x0403, _): self = .ftdi
@@ -55,7 +61,7 @@ public enum CableChip: Sendable, Hashable {
         case .cp210x:
             return "Silicon Labs cables need the CP210x VCP driver from silabs.com. Allow it in System Settings › Privacy & Security after installing."
         case .openPort2:
-            return "The OpenPort 2.0 is a J2534 interface, not a serial KKL cable. SubieScope doesn't support it yet; use a VAG KKL (FTDI) cable."
+            return "The OpenPort 2.0 needs no driver on a Mac. SubieScope's support for it is new and experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings to use it. If there is a microSD card in the cable, take it out and plug the cable in again."
         case .unknown:
             return "SubieScope doesn't recognise this chip. KKL cables with an FTDI chip work best."
         }
@@ -126,9 +132,15 @@ public enum CableTest {
         case noAnswer
         /// Bytes came back that make no sense (wrong baud, wrong line, faulty cable).
         case garbage(Int)
+        /// A Tactrix OpenPort that measures no battery on the OBD plug: it is not in the car.
+        case openPortNoPower(volts: Double)
+        /// A Tactrix OpenPort that sees the car's battery, but the ECU stayed silent.
+        case openPortNoAnswer(volts: Double)
     }
 
-    public static func run(path: String) -> Outcome {
+    /// `openPort` says the port is a Tactrix OpenPort 2.0 instead of a KKL cable.
+    public static func run(path: String, openPort: Bool = false) -> Outcome {
+        if openPort { return runOpenPort(path: path) }
         let port = SerialPort(path: path)
         do {
             try port.open(baud: 4800)
@@ -157,6 +169,30 @@ public enum CableTest {
         return .noAnswer
     }
 
+    /// The same test through a Tactrix OpenPort 2.0. It sends no echo, but it measures the car's
+    /// battery, which tells a cable that is not in the car from an ECU that is switched off.
+    private static func runOpenPort(path: String) -> Outcome {
+        let device = OpenPort(path: path)
+        let line = OpenPortKLine(device: device)
+        do {
+            try line.open(baud: 4800)
+        } catch {
+            return .portFailed(error.localizedDescription)
+        }
+        defer { line.close() }
+        let transport = SSMTransport(line: line)
+        transport.responseTimeout = 0.8
+        let client = SSMClient(transport: transport)
+        for _ in 0..<3 {
+            if let identity = try? client.identify() { return .ok(identity) }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        guard let volts = try? device.batteryVoltage() else {
+            return .portFailed(OpenPortError.noReply(command: "atr 16").localizedDescription)
+        }
+        return volts < 6 ? .openPortNoPower(volts: volts) : .openPortNoAnswer(volts: volts)
+    }
+
     public static func explanation(_ outcome: Outcome) -> (title: String, detail: String) {
         switch outcome {
         case .ok(let id):
@@ -173,6 +209,12 @@ public enum CableTest {
         case .garbage(let n):
             return ("Unexpected data from the cable",
                     "Received \(n) bytes that aren't SSM messages. Check the switch position on the cable, try another USB port, or try a different cable (cheap clones sometimes misbehave).")
+        case .openPortNoPower(let volts):
+            return ("The OpenPort gets no power from the car",
+                    String(format: "It measures %.1f V on the OBD plug, so it is not plugged into the car, or not all the way. Plug it firmly into the OBD port under the dashboard and turn the ignition ON.", volts))
+        case .openPortNoAnswer(let volts):
+            return ("The OpenPort works, but the ECU doesn't answer",
+                    String(format: "The OpenPort measures the car's battery (%.1f V), so it is plugged in. Turn the ignition ON (engine running is fine too). If it still fails: your car may use CAN instead of K-line (most Subarus from about 2014).", volts))
         }
     }
 }
