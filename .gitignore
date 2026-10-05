@@ -14,3 +14,6 @@ Sources/SSMKit/Resources/Definitions/*.xml
 # Notes for AI assistants, kept local
 CLAUDE.md
 .claude/
+
+# The Android app is not open source: it has a private repository of its own in this folder.
+/android/
