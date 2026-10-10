@@ -129,6 +129,8 @@ public struct ROMScaling: Sendable, Equatable {
 public struct ROMAxis: Sendable, Equatable {
     public var name: String
     public var storageType: ROMStorageType?
+    /// The order of a value's bytes in the ROM. For a float this is not what the definition's `endian`
+    /// says: see `ROMDefinitionSet.resolvedTables`.
     public var bigEndian: Bool
     public var address: Int?
     public var size: Int
@@ -157,6 +159,8 @@ public struct ROMTableDef: Sendable, Equatable {
     public var category: String
     public var dimension: Dimension
     public var storageType: ROMStorageType?
+    /// The order of a value's bytes in the ROM. For a float this is not what the definition's `endian`
+    /// says: see `ROMDefinitionSet.resolvedTables`.
     public var bigEndian: Bool
     public var address: Int?
     public var sizeX: Int
@@ -200,6 +204,9 @@ public struct ROMIdentity: Sendable, Equatable {
     public var market: String?
     public var flashMethod: String?
     public var memModel: String?
+    /// The byte order of the ROM's processor, when the definition states it (`<memmodel endian="…">`).
+    /// RomRaider's Subaru definitions do not: nil then.
+    public var memModelBigEndian: Bool?
 
     public init(xmlID: String, base: String? = nil) {
         self.xmlID = xmlID
@@ -291,8 +298,22 @@ public struct ROMDefinitionSet: Sendable {
         // If no real ROM in the chain declared tables (e.g. asking for a template directly), fall back
         // to everything merged, so the template can still be inspected.
         let names = declaredByReal.isEmpty ? Set(merged.keys) : declaredByReal
+        // The most specific definition that states the processor's byte order decides it for floats.
+        let memModelBigEndian = chain.last { $0.identity.memModelBigEndian != nil }?.identity.memModelBigEndian
         return merged.values.filter { names.contains($0.name) }
+            .map { $0.withFloatByteOrder(memModelBigEndian: memModelBigEndian) }
             .sorted { ($0.category, $0.name) < ($1.category, $1.name) }
+    }
+
+    /// The byte order of float values, the way RomRaider reads them (`RomAttributeParser.byteToFloat`):
+    /// the processor's own order when the definition states it, and big-endian otherwise, whatever
+    /// the table's `endian` says. RomRaider's Subaru definitions mark nearly every float table
+    /// `endian="little"`, on processors that are big-endian (SH7055, SH7058); RomRaider calls that
+    /// "improperly defined float table endian in legacy definition files" and corrects it when
+    /// reading, and FastECU reads floats big-endian for the same reason. Taken at its word, the
+    /// attribute would turn every float map and axis into noise.
+    static func floatsAreBigEndian(memModelBigEndian: Bool?) -> Bool {
+        memModelBigEndian ?? true
     }
 
     /// The scaling for a table or axis: an inline one if present, else the shared one by name.
@@ -304,6 +325,17 @@ public struct ROMDefinitionSet: Sendable {
 }
 
 extension ROMTableDef {
+    /// The table with the byte order its float values really have (see `ROMDefinitionSet.floatsAreBigEndian`).
+    /// Whole numbers keep the order the definition gives them.
+    func withFloatByteOrder(memModelBigEndian: Bool?) -> ROMTableDef {
+        let floatsBigEndian = ROMDefinitionSet.floatsAreBigEndian(memModelBigEndian: memModelBigEndian)
+        var table = self
+        if table.storageType == .float { table.bigEndian = floatsBigEndian }
+        if table.xAxis?.storageType == .float { table.xAxis?.bigEndian = floatsBigEndian }
+        if table.yAxis?.storageType == .float { table.yAxis?.bigEndian = floatsBigEndian }
+        return table
+    }
+
     /// Fills empty fields from a more specific definition's table of the same name. The more specific
     /// values (address above all) win; anything it leaves out keeps the base value.
     mutating func merge(from child: ROMTableDef) {

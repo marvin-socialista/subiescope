@@ -87,6 +87,10 @@ public enum ROMDefinitionParser {
             case "xmlid", "internalidaddress", "internalidstring", "ecuid", "make", "market",
                  "flashmethod", "memmodel":
                 text = ""; capturing = true
+                // <memmodel endian="little">: the processor's own byte order, which floats follow.
+                if name == "memmodel", let endian = attrs["endian"] {
+                    currentDef?.identity.memModelBigEndian = ROMDefinitionParser.bigEndian(endian)
+                }
             case "table":
                 let isAxis = !tableStack.isEmpty
                 if isAxis {
