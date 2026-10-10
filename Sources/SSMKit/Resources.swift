@@ -42,6 +42,11 @@ enum SSMResources {
         bundle?.url(forResource: name, withExtension: "json", subdirectory: "ExtendedPIDs")
     }
 
+    /// The car tables made by `scripts/build-car-data.py`: "known_ecus" and "dyno_cars".
+    static func url(forCars name: String) -> URL? {
+        bundle?.url(forResource: name, withExtension: "json", subdirectory: "Cars")
+    }
+
     /// A kernel binary (the small helper program uploaded into ECU RAM to dump flash), e.g.
     /// "ssmk_can_tp_sh7058". From FastECU (GPLv3); credited in the README.
     static func url(forKernel name: String) -> URL? {

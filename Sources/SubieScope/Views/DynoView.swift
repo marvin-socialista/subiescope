@@ -56,6 +56,16 @@ struct DynoView: View {
                     .foregroundStyle(.secondary)
             }
             Section("Car") {
+                Menu("Fill In From a Car") {
+                    ForEach(carYears, id: \.self) { year in
+                        Menu(String(year)) {
+                            ForEach(DynoCar.library.filter { $0.year == year }) { car in
+                                Button(car.name) { settings = settings.applying(car) }
+                            }
+                        }
+                    }
+                }
+                .help("Takes the weight, gear ratios, final drive, tyre size and drag of a car from RomRaider's list. Check them against your own car afterwards.")
                 number("Weight with driver", $settings.massKg, "kg", 0)
                 Toggle("Detect gear from speed", isOn: $autoGear)
                 if !autoGear {
@@ -86,6 +96,10 @@ struct DynoView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var carYears: [Int] {
+        Array(Set(DynoCar.library.map(\.year))).sorted()
     }
 
     private func number(_ title: String, _ value: Binding<Double>, _ units: String, _ decimals: Int) -> some View {

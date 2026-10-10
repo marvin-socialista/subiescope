@@ -158,7 +158,10 @@ case "probe":
     let identity = blocking { try await session.connect() }
     print("")
     print("ECU ID:        \(identity.ecuID)")
-    print("Car:           \(EngineDiagnostics.knownECUs[identity.ecuID] ?? "not in the 2008 STI list")")
+    print("Car:           \(EngineDiagnostics.knownECUs[identity.ecuID] ?? "not in the list of known ECUs")")
+    if let ecu = KnownECU.lookup(identity.ecuID).first, let transport = ecu.flashTransport {
+        print("ROM:           \(ecu.processorDescription ?? "?"), read and written over \(transport == .can ? "CAN" : "the K-line") (EcuFlash calls it \(ecu.flashMethod ?? "?"))")
+    }
     print("System ID:     \(identity.systemIDString) (\(EngineDiagnostics.engineType(systemID: identity.systemID) ?? "unknown engine"))")
     print("Capabilities:  \(identity.capabilities.count) bytes: \(identity.capabilities.hexString)")
     if let cable = session.openPort {

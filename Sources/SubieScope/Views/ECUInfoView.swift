@@ -65,13 +65,25 @@ struct ECUInfoView: View {
             Section("Control unit") {
                 if let id = model.identity {
                     row("ECU ID", id.ecuID, mono: true)
-                    row("Car", model.knownECUDescription ?? "Not in SubieScope's list of 2008 STI ECUs")
+                    row("Car", model.knownECUDescription ?? "Not in SubieScope's list of known ECUs")
                     row("Engine", EngineDiagnostics.engineType(systemID: id.systemID) ?? "Unknown")
                     row("SSM system ID", id.systemIDString, mono: true)
                     row("Capability bytes", "\(id.capabilities.count)")
                     row("VIN", model.vinState)
                 } else {
                     Text("Connect to read the ECU's identification.").foregroundStyle(.secondary)
+                }
+            }
+            if let ecu = knownECUs.first {
+                Section("ROM") {
+                    row("Calibration ID", knownECUs.map(\.calID).joined(separator: " or "), mono: true)
+                    if let processor = ecu.processorDescription { row("Processor", processor) }
+                    if let transport = ecu.flashTransport, let method = ecu.flashMethod {
+                        row("Read and written over", "\(transport == .can ? "CAN" : "K-line") (EcuFlash calls it \(method))")
+                        Text(Self.romNote(transport))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             if let status = model.engineStatus {
@@ -138,12 +150,30 @@ struct ECUInfoView: View {
         }
     }
 
+    /// What the ECU ID says about the ROM inside; empty for an ECU that is not in the list.
+    private var knownECUs: [KnownECU] {
+        model.identity.map { KnownECU.lookup($0.ecuID) } ?? []
+    }
+
+    /// What the way a ROM travels means for the owner's cable and for this app.
+    private static func romNote(_ transport: KnownECU.FlashTransport) -> String {
+        switch transport {
+        case .can:
+            return "A KKL cable has no CAN, so it cannot read or write this ROM. That takes a Tactrix OpenPort 2.0 or an OBDLink adapter. With one of those SubieScope can read the ROM (ROM Editor, after you turn on Advanced mode in Settings; still experimental). It never writes to the car: putting a ROM on the ECU needs another tool, such as EcuFlash or FastECU."
+        case .kLine:
+            return "That is the wire SubieScope logs on, but SubieScope cannot read or write the ROM of this kind of ECU. That takes another tool, such as EcuFlash."
+        }
+    }
+
     private var summary: String {
         guard let id = model.identity else { return "" }
+        let rom = knownECUs.first.map { ecu in
+            "\nROM: \(knownECUs.map(\.calID).joined(separator: " or ")), \(ecu.processor ?? "?"), flash method \(ecu.flashMethod ?? "?")"
+        } ?? ""
         return """
         ECU ID: \(id.ecuID)
         SSM system ID: \(id.systemIDString) (\(EngineDiagnostics.engineType(systemID: id.systemID) ?? "unknown engine"))
-        Car: \(model.knownECUDescription ?? "unknown")
+        Car: \(model.knownECUDescription ?? "unknown")\(rom)
         Capabilities (\(id.capabilities.count) bytes): \(id.capabilities.hexString)
         Definitions: \(model.definitions?.sourceURL.lastPathComponent ?? "-") v\(model.definitions?.version ?? "?")
         Extended parameters available: \(model.extendedCount)

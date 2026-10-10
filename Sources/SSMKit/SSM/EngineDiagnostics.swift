@@ -16,10 +16,11 @@ public enum EngineDiagnostics {
         return table[systemID[2]]
     }
 
-    /// Known ECU IDs for the 2008 Impreza WRX STI (GRB), from the ECUFlash definitions.
-    public static let knownECUs: [String: String] = [
+    /// The 2008 and 2009 Impreza WRX STI (GRB) by ECU ID, named by hand, from the ECUFlash definitions.
+    private static let grbECUs: [String: String] = [
         "5A04784107": "2008 Impreza WRX STI GRB, JDM (AZ1G300F)",
         "5A04784207": "2008 Impreza WRX STI GRB, JDM (AZ1G301F)",
+        "6904784007": "2009 Impreza WRX STI GRB, JDM (AZ1G500F)",
         "5A42784107": "2008 Impreza WRX STI, EDM (AZ1G201G)",
         "5A42784207": "2008 Impreza WRX STI, EDM (AZ1G202G)",
         "5A4278A107": "2008 Impreza WRX STI, EDM (Z1G20000)",
@@ -27,6 +28,11 @@ public enum EngineDiagnostics {
         "6912783007": "2008 Impreza WRX STI, USDM (AZ1G202I)",
         "5AA2784007": "2008 Impreza WRX STI, SADM (AZ1G200J)",
     ]
+
+    /// The car behind every ECU ID in `KnownECU.library`, as one line of text.
+    public static let knownECUs: [String: String] = {
+        KnownECU.library.compactMapValues(KnownECU.description(of:)).merging(grbECUs) { _, byHand in byHand }
+    }()
 
     // MARK: VIN
 
