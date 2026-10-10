@@ -118,6 +118,9 @@ public final class SSMSession: @unchecked Sendable {
     /// Addresses the ECU is currently streaming, if in continuous mode.
     private var streaming: [UInt32]?
     private var streamRequest: SSMPacket?
+    /// The most addresses a stream is started with. It drops when the ECU turns out not to
+    /// answer a request that long (see `readOnce`).
+    private var streamLimit = SSMClient.maxAddressesPerStream
 
     private func stopStreaming() {
         guard streaming != nil else { return }
@@ -155,7 +158,7 @@ public final class SSMSession: @unchecked Sendable {
     }
 
     private func readOnce(_ addresses: [UInt32]) throws -> [UInt8] {
-        let canStream = fastPoll && addresses.count <= client.maxAddressesPerRequest
+        let canStream = fastPoll && addresses.count <= streamLimit
         guard canStream else { return try client.read(addresses: addresses) }
         if streaming == addresses, let request = streamRequest {
             // Nothing to send: wait for the next frame of the stream.
@@ -165,7 +168,18 @@ public final class SSMSession: @unchecked Sendable {
         }
         stopStreaming()
         let request = SSMPacket.readAddressesRequest(addresses, continuous: true)
-        let frame = try transport.exchange(request, expectedDataLength: addresses.count + 1)
+        let frame: SSMPacket
+        do {
+            frame = try transport.exchange(request, expectedDataLength: addresses.count + 1)
+        } catch SSMError.timeout where addresses.count > client.maxAddressesPerRequest {
+            // An ECU stays silent when a request is too long for it, and how long that is
+            // differs per ECU. If it does answer the same addresses in smaller requests, the
+            // length was the problem: stop streaming this many for the rest of the session.
+            transport.stopContinuous()
+            let bytes = try client.read(addresses: addresses)
+            streamLimit = addresses.count - 1
+            return bytes
+        }
         streaming = addresses
         streamRequest = request
         return Array(frame.payload)

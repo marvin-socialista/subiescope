@@ -33,6 +33,10 @@ public final class VirtualECU: @unchecked Sendable {
     public var isPoweredOn = true
     /// Delay replies as if they travelled at this baud rate (0 = as fast as possible).
     public var simulatedBaudRate: Double = 4800
+    /// The most bytes a read request and its answer may take together. A real ECU stays silent
+    /// when a request is too long: a 2008 STI answered 37 addresses and ignored 84, and
+    /// RomRaider's protocol notes give about 250 bytes for the echoed request plus the answer.
+    public var maxExchangeBytes = 250
 
     /// Addresses being streamed in continuous mode (0xA8 with flag 0x01).
     private var streaming: [UInt32]?
@@ -169,6 +173,8 @@ public final class VirtualECU: @unchecked Sendable {
                 addresses.append(UInt32(p[i]) << 16 | UInt32(p[i + 1]) << 8 | UInt32(p[i + 2]))
                 i += 3
             }
+            // Too long: no answer at all, only the echo the cable makes by itself.
+            guard request.data.count + 5 + addresses.count + 6 <= maxExchangeBytes else { return nil }
             lock.lock()
             streaming = p[0] == 0x01 ? addresses : nil
             lock.unlock()

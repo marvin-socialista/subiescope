@@ -957,6 +957,7 @@ final class AppModel {
             log("Trouble codes: \(currentCodes.count) current, \(memorizedCodes.count) memorized")
         } catch {
             codeReadState = .failed(error.localizedDescription)
+            log("Reading trouble codes failed: \(error.localizedDescription)")
         }
     }
 

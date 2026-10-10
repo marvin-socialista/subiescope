@@ -44,9 +44,16 @@ public struct ECUIdentity: Equatable, Sendable {
 public final class SSMClient {
     public let transport: SSMTransport
     public let device: SSMDevice
-    /// Largest number of addresses sent in one 0xA8 request.
-    /// 84 is the most that fits: 2 + 3 * 84 = 254 data bytes.
-    public var maxAddressesPerRequest = 84
+    /// Largest number of addresses sent in one 0xA8 request. A packet has room for 84
+    /// (2 + 3 * 84 = 254 data bytes), but a real ECU does not answer a request that long:
+    /// a 2008 STI answered 37 addresses and stayed silent on 84. FreeSSM asks for at most 33
+    /// at a time and notes that control units have different, lower limits, so this follows it.
+    public var maxAddressesPerRequest = 33
+
+    /// The most addresses a fast poll request is tried with. RomRaider's protocol notes give
+    /// about 250 bytes as the largest packet, the echoed request and the answer together:
+    /// (7 + 3 * 59) + (6 + 59) = 249.
+    public static let maxAddressesPerStream = 59
 
     public init(transport: SSMTransport, device: SSMDevice = .engine) {
         self.transport = transport
