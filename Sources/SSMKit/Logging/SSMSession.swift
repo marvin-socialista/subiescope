@@ -30,6 +30,11 @@ public final class SSMSession: @unchecked Sendable {
     /// The Tactrix OpenPort 2.0 this session talks through, or nil with a KKL cable. Use it only
     /// inside `run`, so it is not spoken to from two places at once.
     public let openPort: OpenPort?
+    /// SSM runs over the OpenPort's CAN side instead of its K-line (experimental).
+    public let overCAN: Bool
+    /// Called when the ECU turns out to refuse some of the values being polled (it says so over CAN):
+    /// the parameters' IDs. They are left out from then on, so the rest keeps coming.
+    public var onRefused: (@Sendable ([String]) -> Void)?
 
     private let line: SSMLine
     private let queue = DispatchQueue(label: "subiescope.ssm.io", qos: .userInitiated)
@@ -37,14 +42,16 @@ public final class SSMSession: @unchecked Sendable {
     private var pollGeneration = 0
     private var consecutiveErrors = 0
 
-    /// `openPort` says the port is a Tactrix OpenPort 2.0 (experimental) instead of a KKL cable.
-    public init(portPath: String, baudRate: UInt32 = 4800, openPort: Bool = false) {
+    /// `openPort` says the port is a Tactrix OpenPort 2.0 instead of a KKL cable.
+    /// `overCAN` makes that cable talk to the ECU over CAN instead of the K-line.
+    public init(portPath: String, baudRate: UInt32 = 4800, openPort: Bool = false, overCAN: Bool = false) {
         self.portPath = portPath
+        self.overCAN = openPort && overCAN
         let line: SSMLine
         if openPort {
             let device = OpenPort(path: portPath)
             self.openPort = device
-            line = OpenPortKLine(device: device)
+            line = overCAN ? OpenPortCANLine(device: device) : OpenPortKLine(device: device)
         } else {
             self.openPort = nil
             line = SerialPort(path: portPath)
@@ -82,9 +89,17 @@ public final class SSMSession: @unchecked Sendable {
             }
             // An OpenPort measures the car's battery, which tells a silent ECU from a cable that is
             // not plugged into the car.
-            if let openPort, case SSMError.timeout = lastError, let volts = try? openPort.batteryVoltage(), volts < 6 {
+            let silent: Bool
+            switch lastError {
+            case SSMError.timeout, OpenPortError.busSilent: silent = true
+            default: silent = false
+            }
+            if let openPort, silent, let volts = try? openPort.batteryVoltage(), volts < 6 {
                 throw OpenPortError.noCarPower(volts: volts)
             }
+            // An older car has no CAN on its diagnostic plug, and says nothing there.
+            if overCAN, silent { throw OpenPortError.noSSMOnCAN }
+            if overCAN, case SSMError.refused = lastError { throw OpenPortError.ssmRefusedOnCAN }
             throw lastError
         }
     }
@@ -100,8 +115,35 @@ public final class SSMSession: @unchecked Sendable {
         }
     }
 
+    /// Reads the freeze frame (OBD-II service 02) through the OpenPort's CAN side, between two polls.
+    /// The engine ECU is asked on CAN whichever line SSM itself uses. Nil without an OpenPort, and
+    /// when the ECU has no frame stored; throws when nothing answers on CAN (an older car has none
+    /// on its diagnostic plug).
+    public func readFreezeFrame() async throws -> FreezeFrame? {
+        guard let cable = openPort else { return nil }
+        return try await run { _ in
+            let transport = OpenPortISOTPTransport(device: cable)
+            // SSM over CAN already has the channel open, with the filter this needs.
+            let borrowed = cable.isChannelOpen(OpenPortWire.Channel.isoTP)
+            if !borrowed { try transport.open() }
+            defer { if !borrowed { transport.close() } }
+            return try FreezeFrame.read(from: transport)
+        }
+    }
+
     public func close() {
         queue.async { [self] in
+            pollGeneration += 1
+            plan = nil
+            stopStreaming()
+            line.close()
+        }
+    }
+
+    /// Like `close`, but only returns once the ECU's stream has been stopped and the line let go. For
+    /// a program that ends right afterwards, which would otherwise leave the ECU streaming.
+    public func closeAndWait() {
+        queue.sync { [self] in
             pollGeneration += 1
             plan = nil
             stopStreaming()
@@ -138,6 +180,7 @@ public final class SSMSession: @unchecked Sendable {
             pollGeneration += 1
             consecutiveErrors = 0
             stopStreaming()
+            reportedRefused.removeAll()
             let newPlan = PollPlan(items: items, allParameters: allParameters, conversionFor: conversionFor)
             guard !newPlan.addresses.isEmpty else {
                 plan = nil
@@ -158,7 +201,7 @@ public final class SSMSession: @unchecked Sendable {
     }
 
     private func readOnce(_ addresses: [UInt32]) throws -> [UInt8] {
-        let canStream = fastPoll && addresses.count <= streamLimit
+        let canStream = fastPoll && line.supportsContinuous && addresses.count <= streamLimit
         guard canStream else { return try client.read(addresses: addresses) }
         if streaming == addresses, let request = streamRequest {
             // Nothing to send: wait for the next frame of the stream.
@@ -185,13 +228,78 @@ public final class SSMSession: @unchecked Sendable {
         return Array(frame.payload)
     }
 
+    /// Addresses the ECU refuses to read. They are left out of every later request.
+    private var refusedAddresses: Set<UInt32> = []
+    /// The parameters `onRefused` was already told about for the values being polled now.
+    private var reportedRefused: Set<String> = []
+
+    /// One round of the plan's addresses, without the ones the ECU refuses: their places are filled
+    /// with zeros and named in `missing`.
+    private func readAllowed(_ plan: PollPlan) throws -> (bytes: [UInt8], missing: Set<Int>) {
+        guard !refusedAddresses.isEmpty else { return (try readOnce(plan.addresses), []) }
+        let allowed = plan.addresses.filter { !refusedAddresses.contains($0) }
+        var read: ArraySlice<UInt8> = []
+        if !allowed.isEmpty { read = try readOnce(allowed)[...] }
+        var bytes: [UInt8] = []
+        var missing: Set<Int> = []
+        for (index, address) in plan.addresses.enumerated() {
+            if refusedAddresses.contains(address) {
+                bytes.append(0)
+                missing.insert(index)
+            } else {
+                bytes.append(read.popFirst() ?? 0)
+            }
+        }
+        return (bytes, missing)
+    }
+
+    /// The ECU refused a request for several values at once. Asking for each parameter by itself
+    /// shows which ones it will not give. Returns false when it refuses none of them alone.
+    private func sortOutRefused(_ plan: PollPlan) throws -> Bool {
+        var found = false
+        for entry in plan.entries where !entry.parameter.addresses.allSatisfy(refusedAddresses.contains) {
+            do {
+                _ = try client.read(addresses: entry.parameter.addresses)
+            } catch SSMError.refused {
+                refusedAddresses.formUnion(entry.parameter.addresses)
+                found = true
+            }
+        }
+        return found
+    }
+
+    /// Tells `onRefused` once which of the chosen parameters the ECU does not give: the ones read
+    /// from a refused address, and the calculated ones that need such a value. A value that is only
+    /// read for a calculation is not named by itself.
+    private func reportRefused(_ plan: PollPlan) {
+        let refused = Set(plan.entries.filter { $0.parameter.addresses.contains(where: refusedAddresses.contains) }.map(\.parameter.id))
+        var ids: [String] = []
+        for entry in plan.entries where entry.output && refused.contains(entry.parameter.id) && !ids.contains(entry.parameter.id) {
+            ids.append(entry.parameter.id)
+        }
+        for calculated in plan.calculated where calculated.bindings.values.contains(where: { refused.contains($0.id) }) {
+            if !ids.contains(calculated.item.parameter.id) { ids.append(calculated.item.parameter.id) }
+        }
+        let new = Set(ids).subtracting(reportedRefused)
+        guard !new.isEmpty else { return }
+        reportedRefused.formUnion(new)
+        onRefused?(ids)
+    }
+
     private func poll(generation: Int, onSample: @escaping @Sendable (Sample) -> Void,
                       onError: @escaping @Sendable (Error, Bool) -> Void) {
         guard generation == pollGeneration, let plan else { return }
         let started = Date()
         do {
-            let bytes = try readOnce(plan.addresses)
-            let values = plan.evaluate(bytes)
+            let round: (bytes: [UInt8], missing: Set<Int>)
+            do {
+                round = try readAllowed(plan)
+            } catch let refusal as SSMError {
+                guard case .refused = refusal, try sortOutRefused(plan) else { throw refusal }
+                round = try readAllowed(plan)
+            }
+            if !round.missing.isEmpty { reportRefused(plan) }
+            let values = plan.evaluate(round.bytes, missing: round.missing)
             consecutiveErrors = 0
             onSample(Sample(time: started, values: values, roundTrip: Date().timeIntervalSince(started)))
         } catch {
@@ -275,11 +383,13 @@ struct PollPlan {
         return (parts[0], parts.count > 1 ? parts[1] : nil)
     }
 
-    func evaluate(_ bytes: [UInt8]) -> [String: Double] {
+    /// `missing` names the places in `bytes` that hold no reading (the ECU refuses those addresses):
+    /// what is read from them gets no value.
+    func evaluate(_ bytes: [UInt8], missing: Set<Int> = []) -> [String: Double] {
         var values: [String: Double] = [:]
         var byUnits: [String: Double] = [:]
         for entry in entries {
-            guard entry.byteIndices.allSatisfy({ $0 < bytes.count }) else { continue }
+            guard entry.byteIndices.allSatisfy({ $0 < bytes.count && !missing.contains($0) }) else { continue }
             let raw = entry.parameter.rawValue(from: ArraySlice(entry.byteIndices.map { bytes[$0] }), conversion: entry.conversion)
             let value: Double
             if entry.parameter.kind == .switchBit || entry.parameter.bit != nil && entry.expression == nil {

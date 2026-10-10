@@ -47,6 +47,7 @@ struct ConnectionCard: View {
                     .buttonStyle(.link)
                     .font(.callout)
             } else if model.connection.isConnected {
+                if model.openPortIsTheCable { OpenPortLinePicker() }
                 HStack {
                     Button("Details") { showingPanel = true }
                         .buttonStyle(.link)
@@ -114,10 +115,29 @@ struct ConnectionSettings: View {
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
 
+            if model.openPortIsTheCable { OpenPortLinePicker() }
+
             Button("Which one do I need?") { model.showModeChooser = true }
                 .buttonStyle(.link)
                 .font(.caption)
         }
+    }
+}
+
+/// K-line or CAN for a Tactrix OpenPort, right where the connection is. The same choice as in
+/// Settings; changing it while connected connects again over the other line.
+struct OpenPortLinePicker: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Picker("Tactrix OpenPort talks over", selection: $model.openPortCAN) {
+            Text("K-line").tag(false)
+            Text("CAN").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .help("How the Tactrix OpenPort talks to the ECU.\nK-line: every value.\nCAN (experimental): two to three times as fast, but without the ECU specific values.")
     }
 }
 
@@ -361,15 +381,8 @@ struct ConnectionPanel: View {
                     ForEach(model.cables) { c in
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(c.productName ?? "USB cable") · \(c.chip.name)").font(.callout.weight(.medium))
-                            if c.chip == .openPort2, c.serialPath != nil, !model.openPortOn {
-                                Text("SubieScope's support for the OpenPort is new and experimental. It has not been tested with a real one yet.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Button("Turn On OpenPort Support") { model.openPortOn = true }
-                                    .controlSize(.small)
-                                    .disabled(model.connection.isConnected)
-                            } else if let path = c.serialPath {
-                                Text("Ready as \((path as NSString).lastPathComponent)\(c.chip == .ftdi ? ", no driver needed" : c.chip == .openPort2 ? " (experimental)" : "")")
+                            if let path = c.serialPath {
+                                Text("Ready as \((path as NSString).lastPathComponent)\(c.chip == .ftdi || c.chip == .openPort2 ? ", no driver needed" : "")")
                                     .font(.caption).foregroundStyle(.secondary)
                             } else {
                                 Text(c.chip.driverAdvice).font(.caption).foregroundStyle(.orange)

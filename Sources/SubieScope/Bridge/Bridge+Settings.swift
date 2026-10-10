@@ -31,8 +31,12 @@ extension Bridge {
         /// Turning this on goes through the warning sheet (the action `rom.showDisclaimer`), never straight to true.
         let advancedMode: Bool
         let remoteControl: Bool
-        /// SSM only.
+        /// SSM only. Whether the OpenPort is a setting at all: on a Mac it is simply used.
+        let openPortIsSetting: Bool
         let openPort: Bool
+        /// SSM only, and only shown with the OpenPort on: talk to the ECU over CAN.
+        let openPortCAN: Bool
+        let openPortCANNote: String
         let fastPoll: Bool
         /// The sentence under the OpenPort setting. A PC needs a driver for that cable, a Mac does not.
         let openPortNote: String
@@ -116,8 +120,12 @@ extension Bridge {
             let hardware = model.mode == .obd && !Bridge.bluetoothWorks
                 ? "ELM327 adapter (USB, Wi-Fi or Bluetooth paired in Windows)" : model.mode.hardware
             let driver = Bridge.onWindows
-                ? "It needs Tactrix's own driver, which comes with EcuFlash: install that first, then plug the cable in and press Connect."
+                ? "An original cable needs Tactrix's own driver, which comes with EcuFlash: install that first, then plug the cable in and press Connect. Is yours a replica? Then do NOT install Tactrix's driver or EcuFlash, and do not plug it into a PC that has them: they update the cable's firmware, and that breaks a replica for good. Plug a replica in as it is: Windows 10 and 11 should give it a COM port by themselves, though that has not been tried yet."
                 : "It needs no driver: plug it in and press Connect."
+            // On a Mac the cable has been on a car. On a PC it never has.
+            let tested = Bridge.onWindows
+                ? "It works in the Mac version, but it has not been tried on a PC yet, so it may not work here."
+                : "It has been tested on one car so far, a 2009 WRX STI, so it may not work on yours."
             return SettingsState(
                 mode: model.mode.rawValue,
                 connectionType: "\(model.mode.title): \(hardware)",
@@ -132,9 +140,12 @@ extension Bridge {
                 extendedValues: model.extendedValuesOn,
                 advancedMode: model.advancedMode,
                 remoteControl: model.remoteControlOn,
+                openPortIsSetting: !AppModel.openPortIsBuiltIn,
                 openPort: model.openPortOn,
+                openPortCAN: model.openPortCAN,
+                openPortCANNote: AppModel.openPortCANNote,
                 fastPoll: model.fastPoll,
-                openPortNote: "Lets you connect with a Tactrix OpenPort 2.0 instead of a KKL cable. \(driver) Take the microSD card out of the cable first. This is new and has not been tested with a real OpenPort yet, so it may not work on yours. With Advanced mode on, it can also read the ROM from the car.",
+                openPortNote: "Lets you connect with a Tactrix OpenPort 2.0 instead of a KKL cable. \(driver) Take the microSD card out of the cable first. \(tested) With Advanced mode on, it can also read the ROM from the car.",
                 steppedAside: model.showModeChooser || model.showWizard || model.showCableSetup || model.showAdvancedDisclaimer
                     || model.updateOffer != nil || model.showCrashPrompt)
         }
@@ -228,6 +239,7 @@ extension Bridge {
             case "remoteControl": model.remoteControlOn = on
             // Not under a connection that is using the cable.
             case "openPort": if !model.connection.isConnected { model.openPortOn = on }
+            case "openPortCAN": if model.connection != .connecting { model.openPortCAN = on }
             case "fastPoll": model.fastPoll = on
             case "wideband": model.widebandOn = on
             // Without a value: no port chosen.

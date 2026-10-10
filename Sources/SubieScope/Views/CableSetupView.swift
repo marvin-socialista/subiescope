@@ -170,7 +170,7 @@ struct SetupStep<Content: View>: View {
 
 struct CableRow: View {
     let cable: USBCable
-    /// Whether the (experimental) support for a Tactrix OpenPort is turned on in Settings.
+    /// Whether the support for a Tactrix OpenPort is turned on in Settings.
     var openPortOn = false
 
     var body: some View {

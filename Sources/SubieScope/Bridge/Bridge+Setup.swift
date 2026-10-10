@@ -263,7 +263,7 @@ extension Bridge {
             let text: String
             /// The text is advice about a missing driver.
             let needsDriver: Bool
-            /// A Tactrix OpenPort whose (experimental) support is off: offer to turn it on.
+            /// A Tactrix OpenPort whose support is off: offer to turn it on.
             let offerOpenPort: Bool
         }
 
@@ -752,11 +752,13 @@ extension Bridge {
                     let title = "\(cable.productName ?? "USB cable") · \(cable.chip.name)"
                     if cable.chip == .openPort2, cable.serialPath != nil, !model.openPortOn {
                         return .init(id: cable.id, title: title,
-                                     text: "SubieScope's support for the OpenPort is new and experimental. It has not been tested with a real one yet.",
+                                     text: onWindows
+                                        ? "SubieScope's support for the OpenPort is new and experimental. It has not been tried on a PC yet."
+                                        : "SubieScope's support for the OpenPort is new. It has been tested on one car so far.",
                                      needsDriver: false, offerOpenPort: true)
                     } else if let path = cable.serialPath {
                         // On a PC the port is there because Windows has installed the driver.
-                        let extra = cable.chip == .ftdi ? (onWindows ? "" : ", no driver needed") : cable.chip == .openPort2 ? " (experimental)" : ""
+                        let extra = cable.chip == .openPort2 && onWindows ? " (experimental)" : cable.chip == .ftdi || cable.chip == .openPort2 ? (onWindows ? "" : ", no driver needed") : ""
                         return .init(id: cable.id, title: title, text: "Ready as \(portName(path))\(extra)", needsDriver: false, offerOpenPort: false)
                     }
                     return .init(id: cable.id, title: title, text: cable.chip.driverAdvice, needsDriver: true, offerOpenPort: false)

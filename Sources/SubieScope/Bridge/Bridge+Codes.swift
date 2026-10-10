@@ -40,6 +40,23 @@ extension Bridge {
             let emptyText: String
         }
 
+        /// What the engine was doing when the ECU stored a code. Only there when the ECU kept one.
+        struct FreezeFrame: Encodable {
+            struct Line: Encodable {
+                let id: String
+                /// "Engine Speed"
+                let name: String
+                /// "2350 rpm"
+                let value: String
+                /// What the value is, shown when the pointer rests on the row.
+                let description: String
+            }
+
+            /// "What the engine was doing at the moment the ECU stored P0420"
+            let summary: String
+            let lines: [Line]
+        }
+
         /// The question before the codes are cleared.
         struct ClearQuestion: Encodable {
             /// What the button that asks it says ("Clear Memory…").
@@ -63,6 +80,7 @@ extension Bridge {
         /// How clearing went, and what to do next.
         let notice: String?
         let lists: [List]
+        let freezeFrame: FreezeFrame?
         let clear: ClearQuestion
         /// The small print under every explanation.
         let disclaimer: String
@@ -121,10 +139,16 @@ extension Bridge {
                     button: "Clear Memory…", title: "Clear the ECU memory?",
                     message: "This erases all stored trouble codes and also resets what the ECU has learned: fuel trims (A/F learning), IAM and fine knock learning start over. The car may idle and drive slightly differently until it relearns.\n\nAfterwards: switch the ignition OFF, wait 10 seconds, switch it ON again.",
                     confirm: "Clear Memory")
+            let freezeFrame = model.freezeFrame.map { frame in
+                CodesState.FreezeFrame(summary: frame.summary, lines: model.freezeFrameLines.map {
+                    .init(id: $0.id, name: $0.name, value: $0.value, description: $0.description)
+                })
+            }
             return CodesState(
                 headline: headline, chips: chips, reading: model.codeReadState == .reading,
                 canRead: connected && model.codeReadState != .reading, canClear: connected, canExport: isRead,
-                error: error, notice: model.clearState, lists: lists, clear: clear, disclaimer: CodeReport.disclaimer)
+                error: error, notice: model.clearState, lists: lists, freezeFrame: freezeFrame, clear: clear,
+                disclaimer: CodeReport.disclaimer)
         }
 
         action("codes.read") { [model] _ in
@@ -230,6 +254,8 @@ extension Bridge {
         let readDate: Date?
         let ecu: String?
         let parts: [Part]
+        /// The freeze frame's heading line and its values, when the ECU had one.
+        let freezeFrame: (summary: String, lines: [FreezeFrame.Line])?
 
         static let disclaimer = "General guidance for Subaru engines. Check the service manual for your model's exact values and wiring."
 
@@ -240,6 +266,7 @@ extension Bridge {
             parts = Bridge.codeLists(model).map {
                 Part(title: $0.title, subtitle: $0.subtitle, codes: $0.codes, color: $0.tint == "red" ? "#e0352b" : "#e08600")
             }
+            freezeFrame = model.freezeFrame.map { ($0.summary, model.freezeFrameLines) }
         }
 
         /// "SubieScope trouble codes 2026-09-24", without the file type.
@@ -284,6 +311,9 @@ extension Bridge {
                 }
                 blocks.append(lines.joined(separator: "\n").trimmingCharacters(in: .newlines))
             }
+            if let freezeFrame {
+                blocks.append((["FREEZE FRAME: \(freezeFrame.summary)"] + freezeFrame.lines.map { "\($0.name): \($0.value)" }).joined(separator: "\n"))
+            }
             if withHelp { blocks.append(Self.disclaimer) }
             return blocks.joined(separator: "\n\n") + "\n"
         }
@@ -317,6 +347,11 @@ extension Bridge {
                     body += "<h4>How to fix</h4>\n<ol>\n" + help.fixes.map { "<li>\(escaped($0))</li>\n" }.joined() + "</ol>\n"
                 }
             }
+            if let freezeFrame {
+                body += "<h2>Freeze frame</h2>\n<p class=\"small\">\(escaped(freezeFrame.summary))</p>\n<table>\n"
+                body += freezeFrame.lines.map { "<tr><td>\(escaped($0.name))</td><td>\(escaped($0.value))</td></tr>\n" }.joined()
+                body += "</table>\n"
+            }
             body += "<p class=\"small disclaimer\">\(escaped(Self.disclaimer))</p>\n"
             return """
             <!doctype html>
@@ -338,6 +373,8 @@ extension Bridge {
             p { margin: 0 0 2pt; }
             ul, ol { margin: 0; padding-left: 16pt; }
             li { margin: 0 0 2pt; break-inside: avoid; }
+            table { border-collapse: collapse; margin-top: 4pt; }
+            td { padding: 0 24pt 2pt 0; vertical-align: top; }
             .small { font-size: 9.5pt; color: #555; }
             .gray { color: #555; }
             .none { margin-top: 8pt; }

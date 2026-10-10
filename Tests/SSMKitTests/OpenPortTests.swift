@@ -303,3 +303,245 @@ struct OpenPortISOTPTests {
         #expect(recorder.pages == Array(rom[0..<(128 * 1024)]))
     }
 }
+
+@Suite("SSM over CAN through the OpenPort (simulated cable)", .serialized)
+struct OpenPortCANTests {
+    static let defs = try! LoggerDefinitions.bundled()
+
+    func items(_ names: [String], set: ECUParameterSet) -> [PollItem] {
+        names.compactMap { name in
+            set.parameters.first { $0.name == name }.map { PollItem(parameter: $0, conversion: $0.conversions[0]) }
+        }
+    }
+
+    @Test func theVirtualECUAnswersTheSameCommandsOnCAN() throws {
+        let ecu = try VirtualECU(
+            identity: .init(systemID: [0xA2, 0x10, 0x11], romID: [0x1B, 0x14, 0x40, 0x05, 0x05], capabilities: [0xF3, 0xFE]),
+            memory: { UInt8(truncatingIfNeeded: $0) })
+        defer { ecu.stop() }
+        // AA identifies, as tuneforge's author recorded on a 2007 Forester XT: EA, then what BF gives.
+        #expect(ecu.answerOverCAN([0xAA]) == [0xEA, 0xA2, 0x10, 0x11, 0x1B, 0x14, 0x40, 0x05, 0x05, 0xF3, 0xFE])
+        #expect(ecu.answerOverCAN([0xA8, 0x00, 0x00, 0x00, 0x0E, 0x00, 0x12, 0x34]) == [0xE8, 0x0E, 0x34])
+        // The K-line's own identify command is not known here, and a refusal is spoken.
+        #expect(ecu.answerOverCAN([0xBF]) == [0x7F, 0xBF, 0x11])
+        ecu.refusedOverCAN = [0xFF7664]
+        #expect(ecu.answerOverCAN([0xA8, 0x00, 0x00, 0x00, 0x0E, 0xFF, 0x76, 0x64]) == [0x7F, 0xA8, 0x12])
+        ecu.isPoweredOn = false
+        #expect(ecu.answerOverCAN([0xAA]) == nil)
+    }
+
+    @Test func identifiesAndReadsOnCAN() throws {
+        let ecu = try VirtualECU(
+            identity: .init(systemID: [0xA2, 0x10, 0x11], romID: [0x1B, 0x14, 0x40, 0x05, 0x05],
+                            capabilities: [UInt8](repeating: 0xFF, count: 48)),
+            memory: { UInt8(truncatingIfNeeded: $0) })
+        defer { ecu.stop() }
+        let cable = try SimulatedOpenPort(ecu: ecu)
+        defer { cable.stop() }
+        cable.canECU = { ecu.answerOverCAN($0) }
+        let line = OpenPortCANLine(device: OpenPort(path: cable.devicePath))
+        try line.open(baud: 4800)
+        defer { line.close() }
+        // ISO 15765 at 500 kbit/s with one flow control filter, for the engine: as for reading a ROM.
+        #expect(cable.commands.contains { $0.hasPrefix("ato6 0 500000 0 ") })
+        #expect(cable.commands.filter { $0.hasPrefix("atf6 3 64 4 ") }.count == 1)
+        #expect(!cable.commands.contains { $0.hasPrefix("ato3") })
+
+        // Everything above the line is the K-line's: the same requests, the same replies.
+        let transport = SSMTransport(line: line)
+        let initReply = try transport.exchange(.initRequest())
+        #expect(initReply.data.first == 0xFF)
+        #expect(Array(initReply.data[4...8]) == [0x1B, 0x14, 0x40, 0x05, 0x05])
+        #expect(initReply.data.count == 57)   // longer than one CAN frame: it came in pieces
+        let values = try transport.exchange(.readAddressesRequest([0x0E, 0x0F, 0x1234]), expectedDataLength: 4)
+        #expect(Array(values.payload) == [0x0E, 0x0F, 0x34])
+        // A full request of 33 addresses is 101 bytes: many CAN frames out, the cable's job.
+        let many = (0..<33).map { UInt32($0 * 3) }
+        #expect(try SSMClient(transport: transport).read(addresses: many) == many.map { UInt8(truncatingIfNeeded: $0) })
+        // "Keep answering" is not passed on: there is no stream on CAN to stop again.
+        _ = try transport.exchange(.readAddressesRequest([0x0E], continuous: true), expectedDataLength: 2)
+        #expect(try line.readAvailable(timeout: 0.2, idle: 0.05).isEmpty)
+    }
+
+    @Test func aRefusalIsToldApartFromSilence() throws {
+        let ecu = try VirtualECU(identity: .init(systemID: [0xA2, 0x10, 0x11], romID: [1, 2, 3, 4, 5], capabilities: []),
+                                 memory: { UInt8(truncatingIfNeeded: $0) })
+        defer { ecu.stop() }
+        ecu.refusedOverCAN = [0xFF7664]
+        let cable = try SimulatedOpenPort(ecu: ecu)
+        defer { cable.stop() }
+        cable.canECU = { ecu.answerOverCAN($0) }
+        let line = OpenPortCANLine(device: OpenPort(path: cable.devicePath))
+        try line.open(baud: 4800)
+        defer { line.close() }
+        let client = SSMClient(transport: SSMTransport(line: line))
+        #expect(throws: SSMError.refused(command: 0xA8, answer: [0x7F, 0xA8, 0x12])) { _ = try client.read(addresses: [0x0E, 0xFF7664]) }
+        #expect(try client.read(addresses: [0x0E]) == [0x0E])
+    }
+
+    @Test func sessionPollsReadsCodesAndTheFreezeFrame() async throws {
+        let demo = try DemoECU.make(definitions: Self.defs)
+        defer { demo.stop() }
+        let cable = try SimulatedOpenPort(ecu: demo.ecu)
+        defer { cable.stop() }
+        cable.canECU = { demo.answerOverCAN($0) }
+        let session = SSMSession(portPath: cable.devicePath, openPort: true, overCAN: true)
+        session.fastPoll = true   // asked for, but there is no such thing on CAN
+        let identity = try await session.connect()
+        #expect(identity.ecuID == "5A04784207")
+        #expect(session.overCAN)
+
+        let set = Self.defs.parameterSet(for: identity)
+        let poll = items(["Engine Speed", "Manifold Relative Pressure", "Coolant Temperature", "IAM (4-byte)*"], set: set)
+        #expect(poll.count == 4)
+        let box = SampleBox()
+        let all = Dictionary(set.parameters.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        session.startPolling(items: poll, allParameters: all, onSample: { box.add($0) }, onError: { e, _ in box.fail(e) })
+        try await Task.sleep(for: .seconds(1))
+
+        let codes = try await session.run { client in try TroubleCodeReport.read(with: client, definitions: set.diagnosticCodes) }
+        #expect(codes.memorized.map(\.code) == ["P0420"])
+        // The freeze frame goes over the channel SSM already has open.
+        let frame = try #require(try await session.readFreezeFrame())
+        #expect(frame.code == "P0420")
+        #expect(frame.lines().first?.name == "Engine Speed")
+        #expect(frame.lines().first?.value == "2350 rpm")
+        try await Task.sleep(for: .milliseconds(300))
+        session.stopPolling()
+        session.close()
+
+        #expect(box.allErrors.isEmpty, "\(box.allErrors)")
+        // Far more than the K-line's handful a second.
+        #expect(box.all.count > 40, "\(box.all.count) samples")
+        let rpm = try #require(box.all.last?.values["P8"])
+        #expect(rpm > 600 && rpm < 7500)
+        // The K-line was never touched, and the channel was opened once.
+        #expect(!cable.commands.contains { $0.hasPrefix("ato3") || $0.hasPrefix("att3") })
+        #expect(cable.commands.filter { $0.hasPrefix("ato6") }.count == 1)
+    }
+
+    @Test func valuesTheECURefusesAreLeftOutAndNamed() async throws {
+        let demo = try DemoECU.make(definitions: Self.defs)
+        defer { demo.stop() }
+        let cable = try SimulatedOpenPort(ecu: demo.ecu)
+        defer { cable.stop() }
+        cable.canECU = { demo.answerOverCAN($0) }
+        let session = SSMSession(portPath: cable.devicePath, openPort: true, overCAN: true)
+        let identity = try await session.connect()
+        let set = Self.defs.parameterSet(for: identity)
+        let poll = items(["Engine Speed", "IAM (4-byte)*", "Coolant Temperature"], set: set)
+        let iam = try #require(poll.first { $0.parameter.name.hasPrefix("IAM") }?.parameter)
+        // Like the 2007 Forester XT in tuneforge's notes: values kept in RAM are refused over CAN.
+        demo.ecu.refusedOverCAN = Set(iam.addresses)
+
+        let box = SampleBox()
+        let named = NameBox()
+        session.onRefused = { named.set($0) }
+        let all = Dictionary(set.parameters.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        session.startPolling(items: poll, allParameters: all, onSample: { box.add($0) }, onError: { e, _ in box.fail(e) })
+        try await Task.sleep(for: .seconds(1))
+        session.stopPolling()
+        session.close()
+
+        #expect(box.allErrors.isEmpty, "\(box.allErrors)")
+        // Named once, however many rounds follow.
+        #expect(named.value == [iam.id])
+        #expect(named.calls == 1)
+        let last = try #require(box.all.last)
+        #expect(last.values["P8"] != nil)
+        #expect(last.values["P2"] != nil)
+        #expect(last.values[iam.id] == nil)
+        #expect(box.all.count > 20)
+    }
+
+    @Test func aCarWithoutCANOnItsPlugSaysSo() async throws {
+        let demo = try DemoECU.make(definitions: Self.defs)
+        defer { demo.stop() }
+        let cable = try SimulatedOpenPort(ecu: demo.ecu)
+        defer { cable.stop() }
+        cable.canECU = { demo.answerOverCAN($0) }
+        cable.canBusAlive = false
+
+        // Nothing acknowledges on CAN: an older car, or the ignition is off.
+        var session = SSMSession(portPath: cable.devicePath, openPort: true, overCAN: true)
+        await #expect(throws: OpenPortError.noSSMOnCAN) { _ = try await session.connect(attempts: 1) }
+        session.close()
+
+        // The same silence with no battery on the plug is a cable that is not in the car.
+        cable.batteryMillivolts = 140
+        session = SSMSession(portPath: cable.devicePath, openPort: true, overCAN: true)
+        await #expect(throws: OpenPortError.noCarPower(volts: 0.14)) { _ = try await session.connect(attempts: 1) }
+        session.close()
+
+        // An ECU that is on the bus and says no to SSM is not the same as silence.
+        cable.batteryMillivolts = 12_150
+        cable.canBusAlive = true
+        cable.canECU = { [0x7F, $0.first ?? 0, 0x11] }
+        session = SSMSession(portPath: cable.devicePath, openPort: true, overCAN: true)
+        await #expect(throws: OpenPortError.ssmRefusedOnCAN) { _ = try await session.connect(attempts: 1) }
+        session.close()
+        cable.canBusAlive = false
+
+        // On the K-line the same car connects, and has no freeze frame to give over CAN.
+        cable.batteryMillivolts = 12_150
+        session = SSMSession(portPath: cable.devicePath, openPort: true)
+        _ = try await session.connect()
+        await #expect(throws: OpenPortError.busSilent) { _ = try await session.readFreezeFrame() }
+        // The K-line carries on afterwards.
+        #expect(try await session.run { try $0.read(addresses: [0x08]) }.count == 1)
+        session.close()
+    }
+
+    @Test func theFreezeFrameIsReadNextToSSMOnTheKLine() async throws {
+        let demo = try DemoECU.make(definitions: Self.defs)
+        defer { demo.stop() }
+        let cable = try SimulatedOpenPort(ecu: demo.ecu)
+        defer { cable.stop() }
+        cable.canECU = { demo.answerOverCAN($0) }
+        let session = SSMSession(portPath: cable.devicePath, openPort: true)
+        _ = try await session.connect()
+
+        let frame = try #require(try await session.readFreezeFrame())
+        #expect(frame.code == "P0420")
+        #expect(frame.readings.count == 12)
+        // The CAN channel was opened for this and closed again; the K-line stays as it was.
+        #expect(cable.commands.contains { $0.hasPrefix("ato6 0 500000 0 ") })
+        #expect(cable.commands.contains { $0.hasPrefix("atc6") })
+        #expect(try await session.run { try $0.read(addresses: [0x08]) }.count == 1)
+
+        // Clearing the ECU's memory takes the frame with it.
+        try await session.run { try ClearMemory.perform(with: $0) }
+        #expect(try await session.readFreezeFrame() == nil)
+        session.close()
+    }
+
+    @Test func aROMReadMayBorrowTheChannel() async throws {
+        let demo = try DemoECU.make(definitions: Self.defs)
+        defer { demo.stop() }
+        let cable = try SimulatedOpenPort(ecu: demo.ecu)
+        defer { cable.stop() }
+        cable.canECU = { demo.answerOverCAN($0) }
+        let session = SSMSession(portPath: cable.devicePath, openPort: true, overCAN: true)
+        _ = try await session.connect()
+        let device = try #require(session.openPort)
+        // What reading a ROM does: open the channel for itself, use it, close it.
+        try await session.run { _ in
+            let transport = OpenPortISOTPTransport(device: device)
+            try transport.open()
+            _ = try transport.request([0xAA], timeout: 1)
+            transport.close()
+        }
+        // SSM finds its channel closed and opens it again.
+        #expect(try await session.run { try $0.identify() }.ecuID == "5A04784207")
+        session.close()
+    }
+}
+
+final class NameBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var names: [String] = []
+    private var count = 0
+    func set(_ new: [String]) { lock.lock(); names = new; count += 1; lock.unlock() }
+    var value: [String] { lock.lock(); defer { lock.unlock() }; return names }
+    var calls: Int { lock.lock(); defer { lock.unlock() }; return count }
+}

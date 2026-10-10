@@ -13,6 +13,10 @@ public enum OpenPortError: Error, LocalizedError, Equatable {
     case noAnswer
     /// The cable measures no battery voltage on the OBD plug.
     case noCarPower(volts: Double)
+    /// Nothing answers SSM on CAN.
+    case noSSMOnCAN
+    /// The ECU is there on CAN, and refuses SSM that way.
+    case ssmRefusedOnCAN
 
     public var errorDescription: String? {
         switch self {
@@ -26,6 +30,10 @@ public enum OpenPortError: Error, LocalizedError, Equatable {
             return "Nothing in the car answered on the CAN bus. Check that the OpenPort is plugged into the OBD port and the ignition is ON."
         case .noAnswer:
             return "The ECU did not answer. Check that the ignition is ON."
+        case .ssmRefusedOnCAN:
+            return "The ECU is there on CAN, but it does not take these requests that way. Set the Tactrix OpenPort to K-line in Settings to talk to it that way."
+        case .noSSMOnCAN:
+            return "The ECU did not answer on CAN. Check that the ignition is ON. Subarus from before about 2008 only talk on the K-line: for those, set the Tactrix OpenPort to K-line in Settings."
         case .noCarPower(let volts):
             return String(format: "The OpenPort gets no power from the car (it measures %.1f V). Plug it firmly into the OBD port under the dashboard.", volts)
         }
@@ -38,9 +46,10 @@ public enum OpenPortError: Error, LocalizedError, Equatable {
 /// K-line that SSM uses and the CAN channel that reading a ROM uses sit on top of it
 /// (`OpenPortKLine`, `OpenPortISOTPTransport`).
 ///
-/// EXPERIMENTAL: NOT TESTED ON A REAL CABLE. It follows the protocol notes of openport-j2534 by Biser
-/// Atanasov (GPL-3.0-or-later), which were measured on a real OpenPort, and runs here only against a
-/// simulated cable.
+/// It follows the protocol notes of openport-j2534 by Biser Atanasov (GPL-3.0-or-later), which were
+/// measured on a real OpenPort. It has run on one real cable and car (a replica cable on a 2009 JDM Impreza WRX STI, on a Mac, on 10 October 2026):
+/// that cable reported firmware 1.17.4877 and took every command used here. Everything else is run
+/// against a simulated cable.
 ///
 /// Not thread safe: use it from one thread or queue, like `SerialPort`.
 public final class OpenPort: @unchecked Sendable {

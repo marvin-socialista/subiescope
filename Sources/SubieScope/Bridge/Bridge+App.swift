@@ -48,6 +48,9 @@ extension Bridge {
         let isDemo: Bool
         let isPlayingBack: Bool
         let status: Status
+        /// "kline" or "can" while a Tactrix OpenPort is the cable, connected or chosen: the card then
+        /// offers the choice. Nil with any other cable.
+        let openPortLine: String?
 
         /// The cables (SSM) or adapters (OBD-II) to choose from, in the order of the list.
         let devices: [Device]
@@ -106,6 +109,7 @@ extension Bridge {
                 isDemo: model.isDemo,
                 isPlayingBack: model.isPlayingBack,
                 status: Bridge.status(model),
+                openPortLine: model.openPortIsTheCable ? (model.openPortCAN ? "can" : "kline") : nil,
                 devices: devices,
                 experimentalDevices: experimental,
                 demoDevice: obd ? .init(id: AppModel.demoOBDID, label: "Demo OBD-II car (simulated)")

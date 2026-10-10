@@ -7,7 +7,9 @@ import Foundation
 /// The channel is set up the way FastECU sets it up for this ECU: ISO 15765 at 500 kbit/s, requests
 /// on 7E0 padded to full frames, and a flow control filter for replies from 7E8.
 ///
-/// EXPERIMENTAL: NOT TESTED ON A REAL CABLE OR CAR. It has only run against a simulated cable and ECU.
+/// Run on one real cable and car (a replica cable on a 2009 JDM Impreza WRX STI, on a Mac, on 10 October 2026): a whole
+/// ROM was read through it in 55 seconds, with every checksum in it right. Otherwise it runs against
+/// a simulated cable and ECU.
 public final class OpenPortISOTPTransport: SH7058Transport {
     private let device: OpenPort
     private let channel = OpenPortWire.Channel.isoTP

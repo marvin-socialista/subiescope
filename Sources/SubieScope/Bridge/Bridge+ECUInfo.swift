@@ -171,8 +171,8 @@ extension Bridge {
 
         sections.append(.init(title: "Connection", items: [
             .row("Cable", model.selectedPortLabel),
-            .row("Protocol", "SSM2 over K-line (ISO 9141), 4800 baud 8N1"),
-            .row("Fast poll", model.fastPoll ? "On" : "Off"),
+            .row("Protocol", model.ssmProtocolText),
+            .row("Fast poll", model.fastPollText),
         ], endsWithLiveRows: true))
 
         return ECUInfoState(

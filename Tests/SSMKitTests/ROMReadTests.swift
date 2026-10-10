@@ -64,6 +64,28 @@ struct DensoSeedKeyTests {
         #expect(DensoCAN.stockKey(fromSeed: [0xFF, 0xFF, 0xFF, 0xFF]) == [0x26, 0xE6, 0xDB, 0x59])
     }
 
+    // Seeds a real ECU gave and the keys it accepted: a 2007 USDM Forester XT (ECU ID 4E42504007) being
+    // unlocked by EcuFlash, recorded and published in the tests of tuneforge
+    // (https://github.com/firefighter-19/tuneforge). The only check of this table against a car.
+    @Test func answersTheSeedsARealECUGave() {
+        let recorded: [(seed: [UInt8], key: [UInt8])] = [
+            ([0xDD, 0xEE, 0xAB, 0x05], [0x74, 0x15, 0x7C, 0x7D]),
+            ([0x0D, 0x13, 0x32, 0x08], [0xFD, 0xB2, 0x52, 0x38]),
+            ([0x0F, 0xCE, 0x53, 0xBB], [0x3F, 0x97, 0xAD, 0x93]),
+            ([0xA0, 0xE6, 0xDF, 0xD5], [0x5E, 0xB8, 0xE0, 0x6A]),
+            ([0x25, 0xA4, 0xF1, 0x81], [0xE7, 0x6B, 0x34, 0x34]),
+            ([0xAB, 0x2C, 0xEB, 0xA1], [0x8D, 0x36, 0x6E, 0x24]),
+            ([0x7D, 0xAF, 0x7C, 0xBB], [0xE4, 0x3B, 0x52, 0xE2]),
+            ([0xBF, 0x78, 0xFD, 0x02], [0x9A, 0x25, 0x62, 0x16]),
+            // And SubieScope's own first read of a ROM from a car, on 10 October 2026: a 2009 JDM
+            // Impreza WRX STI (ECU ID 6904784007, AZ1G500F) gave this seed and accepted this key.
+            ([0xF0, 0xCE, 0x4B, 0x23], [0x3E, 0xA0, 0xB3, 0x40]),
+        ]
+        for pair in recorded {
+            #expect(DensoCAN.stockKey(fromSeed: pair.seed) == pair.key)
+        }
+    }
+
     @Test func keyGenerationIsReversible() {
         // Self-consistency: the key schedule is a Feistel network, so the derived key maps back to the
         // seed. This proves the port of the (reversible) algorithm is internally consistent.
@@ -89,6 +111,20 @@ struct DensoKernelTests {
 
     @Test func encryptMatchesKnownVector() {
         #expect(DensoCAN.encryptPayload([0x11, 0x22, 0x33, 0x44]) == [0xF0, 0x38, 0x34, 0xFD])
+    }
+
+    // Eleven words of a kernel as EcuFlash sent it to a real ECU, which loaded and ran it (the same
+    // 2007 Forester XT; the recording is in tuneforge, https://github.com/firefighter-19/tuneforge).
+    // They are where that kernel keeps its name, so the cipher's table is right when the name comes out.
+    @Test func decryptsWhatARealECUAccepted() {
+        let sent: [UInt8] = [
+            0x6C, 0x9E, 0x90, 0xD0, 0xE3, 0x79, 0xC7, 0x72, 0xDD, 0x25, 0xA0, 0x25, 0x00, 0xCB, 0x98, 0x74,
+            0x70, 0xBD, 0xD0, 0x32, 0xA9, 0xDC, 0xEB, 0x00, 0xAE, 0xF5, 0x23, 0xE9, 0x32, 0xFC, 0x00, 0x56,
+            0x84, 0x13, 0xF7, 0x59, 0xB6, 0x0C, 0x2D, 0x1D, 0xA1, 0xA6, 0xD1, 0xF8,
+        ]
+        let name = Array("OpenECU Subaru SH7058 OCP CAN Kernel V1.07".utf8) + [0, 0]
+        #expect(DensoCAN.decryptPayload(sent) == name)
+        #expect(DensoCAN.encryptPayload(name) == sent)
     }
 
     @Test func cipherWorksOnWholeWordsOnly() {
@@ -255,12 +291,12 @@ class SimulatedSH7058ECU: SH7058Transport, @unchecked Sendable {
             return [0x74, 0x20]
         case 0xB6:                       // transfer data block
             uploadedBlocks.append(contentsOf: payload.dropFirst(4))
-            return [0x76]
+            return [0xF6]                // what a real ECU answers (recorded by tuneforge's author), not 76
         case 0x37:                       // transfer exit
             return [0x77]
         case 0x31:                       // start routine (jump to kernel)
             kernelRunning = true
-            return [0x71, 0x01, 0x02]
+            return [0x71, 0x01, 0x02, 0x02]
         default:
             return []
         }
@@ -315,5 +351,31 @@ struct DensoReaderEndToEndTests {
         let ecu = BadKeyECU(rom: Self.makeROM())
         let reader = DensoSH7058CANReader(transport: ecu, kernel: [UInt8](repeating: 0, count: 256))
         #expect(throws: DensoSH7058CANReader.ReaderError.self) { _ = try reader.read() }
+    }
+
+    @Test func saysToWaitWhenTheECUHasLockedItself() {
+        // After wrong keys the ECU refuses even to give a seed for a while (7F 27 37).
+        final class LockedECU: SimulatedSH7058ECU, @unchecked Sendable {
+            override func request(_ payload: [UInt8], responseCount: Int, timeout: TimeInterval) throws -> [UInt8] {
+                if payload.first == 0x27 { return [0x7F, 0x27, 0x37] }
+                return try super.request(payload, responseCount: responseCount, timeout: timeout)
+            }
+        }
+        let reader = DensoSH7058CANReader(transport: LockedECU(rom: Self.makeROM()), kernel: [UInt8](repeating: 0, count: 256))
+        do {
+            _ = try reader.read()
+            Issue.record("a locked ECU must stop the read")
+        } catch {
+            #expect(error.localizedDescription.contains("wait 10 seconds"))
+        }
+    }
+
+    @Test func explainsAKeyTheECUDoesNotAccept() {
+        #expect(DensoSH7058CANReader.securityRefusal([0x7F, 0x27, 0x35])?.contains("original software") == true)
+        #expect(DensoSH7058CANReader.securityRefusal([0x7F, 0x27, 0x36])?.contains("wait 10 seconds") == true)
+        // Anything else keeps the reader's own wording.
+        #expect(DensoSH7058CANReader.securityRefusal([0x7F, 0x27, 0x12]) == nil)
+        #expect(DensoSH7058CANReader.securityRefusal([0x67, 0x02]) == nil)
+        #expect(DensoSH7058CANReader.securityRefusal([]) == nil)
     }
 }

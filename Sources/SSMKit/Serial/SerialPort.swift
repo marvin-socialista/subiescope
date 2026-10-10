@@ -3,6 +3,8 @@ import Foundation
 
 public enum SerialError: Error, LocalizedError, Equatable {
     case openFailed(path: String, reason: String)
+    /// Another program has the port open. A port goes to one program at a time.
+    case inUse(path: String)
     case configureFailed(String)
     case notOpen
     case writeFailed(String)
@@ -12,6 +14,8 @@ public enum SerialError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .openFailed(let path, let reason): return "Could not open \(path): \(reason)"
+        case .inUse(let path):
+            return "Another program is using this port right now (\(path)), so it can't be opened here. That can be SubieScope itself (the app, or subiescope-cli in a terminal) or a tool such as RomRaider. Close it there, or disconnect it, and try again."
         case .configureFailed(let reason): return "Could not configure the serial port: \(reason)"
         case .notOpen: return "The serial port is not open."
         case .writeFailed(let reason): return "Writing to the cable failed: \(reason)"
@@ -40,6 +44,7 @@ public final class SerialPort {
         close()
         let handle = cserial_open(path)
         guard handle >= 0 else {
+            if errno == EBUSY { throw SerialError.inUse(path: path) }
             throw SerialError.openFailed(path: path, reason: String(cString: strerror(errno)))
         }
         fd = handle

@@ -347,8 +347,10 @@ extension AppModel {
             let confirmed = report.confirmed + report.permanent.filter { !report.confirmed.contains($0) }
             currentCodes = confirmed.map(codeDefinition)
             memorizedCodes = report.pending.filter { !confirmed.contains($0) }.map(codeDefinition)
+            // A bonus: a car that fumbles the freeze frame still shows its codes.
+            freezeFrame = try? await session.run { elm in try FreezeFrame.read(from: elm) }
             codeReadState = .read(Date())
-            log("Trouble codes: \(currentCodes.count) confirmed, \(memorizedCodes.count) pending")
+            log("Trouble codes: \(currentCodes.count) confirmed, \(memorizedCodes.count) pending" + (freezeFrame.map { ", freeze frame for \($0.code)" } ?? ""))
         } catch {
             codeReadState = .failed(error.localizedDescription)
         }
@@ -363,6 +365,7 @@ extension AppModel {
             log("Trouble codes cleared")
             currentCodes = []
             memorizedCodes = []
+            freezeFrame = nil
             codeReadState = .idle
         } catch {
             clearState = "Clearing failed: \(error.localizedDescription)"

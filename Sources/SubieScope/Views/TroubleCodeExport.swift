@@ -14,6 +14,8 @@ struct TroubleCodeExport {
     let readDate: Date?
     let ecu: String?
     let sections: [Section]
+    /// The freeze frame's heading line and its values, when the ECU had one.
+    let freezeFrame: (summary: String, lines: [FreezeFrame.Line])?
 
     static let disclaimer = "General guidance for Subaru engines. Check the service manual for your model's exact values and wiring."
 
@@ -24,6 +26,7 @@ struct TroubleCodeExport {
             Section(title: "Current", subtitle: "Faults the ECU sees right now (temporary)", codes: model.currentCodes, tint: .systemRed),
             Section(title: "Memorized", subtitle: "Stored faults, kept until memory is cleared", codes: model.memorizedCodes, tint: .systemOrange),
         ]
+        freezeFrame = model.freezeFrame.map { ($0.summary, model.freezeFrameLines) }
     }
 
     /// "SubieScope trouble codes 2026-09-24"
@@ -60,6 +63,9 @@ struct TroubleCodeExport {
                 }
             }
             blocks.append(lines.joined(separator: "\n").trimmingCharacters(in: .newlines))
+        }
+        if let freezeFrame {
+            blocks.append((["FREEZE FRAME: \(freezeFrame.summary)"] + freezeFrame.lines.map { "\($0.name): \($0.value)" }).joined(separator: "\n"))
         }
         if withHelp { blocks.append(Self.disclaimer) }
         return blocks.joined(separator: "\n\n") + "\n"
@@ -151,6 +157,11 @@ struct TroubleCodeExport {
                 add("How to fix", font: bold, before: 6, after: 2)
                 for (index, fix) in help.fixes.enumerated() { add("\(index + 1).\t" + fix, font: body, after: 2, indent: 16) }
             }
+        }
+        if let freezeFrame {
+            add("Freeze frame", font: .systemFont(ofSize: 16, weight: .bold), before: 22)
+            add(freezeFrame.summary, font: small, color: .darkGray, after: 4)
+            for line in freezeFrame.lines { add("\(line.name):\t\(line.value)", font: body, after: 2, indent: 220) }
         }
         add(Self.disclaimer, font: small, color: .darkGray, before: 24)
         return out

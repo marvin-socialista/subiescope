@@ -10,6 +10,8 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         public var vin = "JF1VA1A6XG9800001"
         public var confirmedCodes: [String] = ["P0420"]
         public var pendingCodes: [String] = ["P0171"]
+        /// The code the ECU kept a freeze frame for: the first confirmed one, as long as it is stored.
+        public var freezeFrameCode: String? { confirmedCodes.first }
         /// Multi-frame (CAN) replies for VIN and codes, the way 2008+ cars answer.
         public var usesCAN = true
         public var supported: Set<UInt8> = [
@@ -193,6 +195,9 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         case 0x01 where request.count == 2:
             guard let data = pidData(request[1]) else { return prefix + "NO DATA\r" }
             return prefix + line([0x41, request[1]] + data) + "\r"
+        case 0x02:
+            guard let answer = DemoFreezeFrame.answer(to: request, code: car.freezeFrameCode) else { return prefix + "NO DATA\r" }
+            return prefix + line(answer) + "\r"
         case 0x03: return prefix + codes(car.confirmedCodes, response: 0x43)
         case 0x07: return prefix + codes(car.pendingCodes, response: 0x47)
         case 0x0A: return prefix + "NO DATA\r"
@@ -211,7 +216,7 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
 
     // MARK: Trouble codes and VIN
 
-    private func codeBytes(_ code: String) -> [UInt8] {
+    static func codeBytes(_ code: String) -> [UInt8] {
         let letters = ["P": 0, "C": 1, "B": 2, "U": 3]
         guard code.count == 5, let type = letters[String(code.first!)], let value = UInt16(code.dropFirst(), radix: 16) else { return [0, 0] }
         return [UInt8(type << 6) | UInt8((value >> 8) & 0x3F), UInt8(value & 0xFF)]
@@ -219,7 +224,7 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
 
     private func codes(_ list: [String], response: UInt8) -> String {
         if list.isEmpty { return car.usesCAN ? line([response, 0x00]) + "\r" : line([response, 0, 0, 0, 0, 0, 0]) + "\r" }
-        let pairs = list.flatMap(codeBytes)
+        let pairs = list.flatMap(Self.codeBytes)
         if car.usesCAN {
             let message = [response, UInt8(list.count)] + pairs
             return frames(message)
@@ -276,7 +281,11 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
             return supportBitmask(base: pid)
         }
         guard car.supported.contains(pid), !silentPIDs.contains(pid) else { return nil }
-        let w = world.sample(at: Date().timeIntervalSince(start))
+        return Self.encode(pid, world: world.sample(at: Date().timeIntervalSince(start)), runTime: Date().timeIntervalSince(start))
+    }
+
+    /// The bytes a car answers for one value, given what its engine is doing (`w`, a `DemoWorld` sample).
+    static func encode(_ pid: UInt8, world w: [String: Double], runTime: TimeInterval) -> [UInt8]? {
         func byte(_ v: Double) -> UInt8 { UInt8(max(0, min(255, v.rounded()))) }
         func word(_ v: Double) -> [UInt8] {
             let n = UInt16(max(0, min(65535, v.rounded())))
@@ -296,7 +305,7 @@ public final class SimulatedELM: ELMChannel, @unchecked Sendable {
         case 0x11: return [byte((w["throttle"] ?? 0) * 255 / 100)]
         case 0x14: return [byte(((w["lambda"] ?? 1) < 1 ? 0.8 : 0.2) * 200), 0xFF]
         case 0x15: return [byte((w["rearO2"] ?? 0.65) * 200), 0xFF]
-        case 0x1F: return word(Date().timeIntervalSince(start))
+        case 0x1F: return word(runTime)
         case 0x24: return word((w["lambda"] ?? 1) * 32768) + word(3 * 8192 * 0.6)
         case 0x2F: return [byte(62 * 255 / 100)]
         case 0x33: return [101]

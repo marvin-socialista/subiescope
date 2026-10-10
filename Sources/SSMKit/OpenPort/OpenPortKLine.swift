@@ -7,9 +7,11 @@ import Foundation
 /// without the cable adding or checking checksums, at the SSM speed, with no pauses between bytes and
 /// a filter that lets every byte through.
 ///
-/// EXPERIMENTAL: NOT TESTED ON A REAL CABLE. How the cable hands over bytes it receives from an ECU on
-/// the K-line was never measured by the notes this follows; it is what three other open-source drivers
-/// agree on.
+/// How the cable hands over bytes it receives from an ECU on the K-line was never measured by the
+/// notes this follows; it is what three other open-source drivers agree on, and what the one real
+/// cable this has run on did (a replica cable on a 2009 JDM Impreza WRX STI, on a Mac, on 10 October 2026): a start
+/// frame, the bytes in pieces of 32, an end frame. Fast poll worked there too, and the ECU's stream
+/// stopped on the twenty zero bytes.
 public final class OpenPortKLine: SSMLine {
     public let device: OpenPort
     private let channel = OpenPortWire.Channel.kLine

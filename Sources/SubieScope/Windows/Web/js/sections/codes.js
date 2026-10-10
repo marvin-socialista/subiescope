@@ -136,6 +136,16 @@ export function Codes() {
         ${list.codes.length === 0 && html`<div class="codes-row secondary">${list.emptyText}</div>`}
         ${list.codes.map(code => html`<${CodeRow} key=${code.id} list=${list} code=${code} disclaimer=${codes.disclaimer} />`)}
       </section>`)}
+      ${codes.freezeFrame && html`<section>
+        <div class="codes-section">
+          <div class="headline">Freeze frame</div>
+          <div class="caption secondary">${codes.freezeFrame.summary}</div>
+        </div>
+        ${codes.freezeFrame.lines.map(line => html`<div key=${line.id} class="codes-row" title=${line.description}>
+          <span class="grow">${line.name}</span>
+          <span class="digits secondary selectable">${line.value}</span>
+        </div>`)}
+      </section>`}
     </div>
     ${confirming && html`<${Alert} title=${codes.clear.title} buttons=${[
       { label: codes.clear.confirm, kind: 'destructive', onClick: () => { setConfirming(false); send('codes.clear'); } },

@@ -24,6 +24,9 @@ struct DiagnosticsView: View {
                     codeSection(title: "Current", subtitle: "Faults the ECU sees right now (temporary)", codes: model.currentCodes, tint: .red)
                     codeSection(title: "Memorized", subtitle: "Stored faults, kept until memory is cleared", codes: model.memorizedCodes, tint: .orange)
                 }
+                if let frame = model.freezeFrame {
+                    freezeFrameSection(frame)
+                }
             }
             .listStyle(.inset)
         }
@@ -107,6 +110,26 @@ struct DiagnosticsView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.headline)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The engine values the ECU kept with a stored code. Only there when the ECU has a frame.
+    private func freezeFrameSection(_ frame: FreezeFrame) -> some View {
+        Section {
+            ForEach(model.freezeFrameLines) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(line.name)
+                    Spacer()
+                    Text(line.value).monospacedDigit().foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+                .help(line.description)
+            }
+        } header: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Freeze frame").font(.headline)
+                Text(frame.summary).font(.caption).foregroundStyle(.secondary)
             }
         }
     }

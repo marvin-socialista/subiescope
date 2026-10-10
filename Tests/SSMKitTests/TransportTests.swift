@@ -52,6 +52,15 @@ struct TransportTests {
         #expect(Array(values.payload) == [0x0E, 0x0F, 0x34])
     }
 
+    // A second program on one cable (the app and the command line tool, say) is told why it cannot
+    // open the port. Two opens inside one program do not show it, so only the wording is checked here.
+    @Test func aPortInUseIsSaidInPlainWords() {
+        let text = SerialError.inUse(path: "/dev/cu.usbserial-1").localizedDescription
+        #expect(text.contains("Another program is using this port"))
+        #expect(text.contains("/dev/cu.usbserial-1"))
+        #expect(text.contains("subiescope-cli"))
+    }
+
     @Test func timeoutWhenIgnitionOff() throws {
         let ecu = try VirtualECU(identity: .init(systemID: [0, 0, 0], romID: [0, 0, 0, 0, 0], capabilities: []),
                                  memory: { _ in 0 })

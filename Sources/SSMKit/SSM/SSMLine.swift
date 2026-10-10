@@ -15,6 +15,13 @@ public protocol SSMLine: AnyObject {
     func discardInput()
     /// Interrupts the ECU while it streams answers in continuous (fast poll) mode.
     func interrupt(for duration: TimeInterval)
+    /// Whether the ECU can keep answering one request by itself on this line (fast poll). It can on
+    /// the K-line, not over CAN.
+    var supportsContinuous: Bool { get }
+}
+
+extension SSMLine {
+    public var supportsContinuous: Bool { true }
 }
 
 extension SerialPort: SSMLine {

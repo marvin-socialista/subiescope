@@ -4,7 +4,7 @@
 // Windows app has no menu bar. The state comes from Bridge+Settings.swift.
 import { useEffect, useState } from '../../vendor/preact-htm.js';
 import { peek, send, useSlice } from '../bridge.js';
-import { html, cls, Icon, Button, Select, Sheet, Alert, Link, Spinner } from '../ui.js';
+import { html, cls, Icon, Button, Select, Segmented, Sheet, Alert, Link, Spinner } from '../ui.js';
 
 // The app's icon
 
@@ -127,8 +127,19 @@ function General({ settings, computer }) {
     <${Note}>Lets programs you run on this ${computer} send read-only requests to the connected adapter through subiescope-cli. Off by default. Nothing that clears codes or writes to the car gets through.<//>
 
     ${!obd && html`
-      <${SwitchRow} label="Tactrix OpenPort 2.0 cable (experimental)" checked=${settings.openPort} disabled=${settings.connected} onChange=${flip('openPort')} />
-      <${Note}>${settings.openPortNote}<//>
+      ${settings.openPortIsSetting && html`
+        <${SwitchRow} label="Tactrix OpenPort 2.0 cable (experimental)" checked=${settings.openPort} disabled=${settings.connected} onChange=${flip('openPort')} />
+        <${Note}>${settings.openPortNote}<//>
+      `}
+
+      ${settings.openPort && html`
+        <${Row} label="Tactrix OpenPort 2.0 talks over">
+          <${Segmented} value=${settings.openPortCAN ? 'can' : 'kline'} disabled=${settings.connecting}
+            options=${[{ value: 'kline', label: 'K-line' }, { value: 'can', label: 'CAN (experimental)' }]}
+            onChange=${value => set('openPortCAN', { on: value === 'can' })} />
+        <//>
+        <${Note}>${settings.openPortCANNote}<//>
+      `}
 
       <${SwitchRow} label="Fast poll (continuous mode)" checked=${settings.fastPoll} onChange=${flip('fastPoll')} />
       <${Note}>The ECU keeps sending values without being asked each time, roughly doubling the sample rate. Turn it off if logging stalls.<//>

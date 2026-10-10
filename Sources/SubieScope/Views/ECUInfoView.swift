@@ -118,8 +118,8 @@ struct ECUInfoView: View {
             }
             Section("Connection") {
                 row("Cable", model.selectedPortLabel)
-                row("Protocol", "SSM2 over K-line (ISO 9141), 4800 baud 8N1")
-                row("Fast poll", model.fastPoll ? "On" : "Off")
+                row("Protocol", model.ssmProtocolText)
+                row("Fast poll", model.fastPollText)
                 if model.connection.isConnected {
                     row("Sample rate", String(format: "%.1f samples/s", model.samplesPerSecond))
                     row("Last poll", String(format: "%.0f ms", model.lastRoundTrip * 1000))

@@ -67,6 +67,13 @@ export function DevicePicker({ app, wide, style }) {
     onChange=${id => send('app.selectDevice', { id })} />`;
 }
 
+/** K-line or CAN for a Tactrix OpenPort, right where the connection is. The same choice as in Settings. */
+function OpenPortLine({ app }) {
+  return html`<${Segmented} wide value=${app.openPortLine} onChange=${line => send('settings.set', { name: 'openPortCAN', on: line === 'can' })}
+    options=${[{ value: 'kline', label: 'K-line', title: 'The Tactrix OpenPort talks to the ECU over the K-line: every value.' },
+               { value: 'can', label: 'CAN', title: 'Over CAN (experimental): two to three times as fast, but without the ECU specific values.' }]} />`;
+}
+
 /** The connection status at the bottom of the sidebar: a clear badge, a Connect button, and a panel with details. */
 function ConnectionCard({ app }) {
   const [panel, setPanel] = useState(null);
@@ -97,6 +104,7 @@ function ConnectionCard({ app }) {
         onClick=${() => send('app.stopPlayback', { connect: true })}>Connect to Car<//>
       <${Button} kind="link" class="callout" onClick=${() => send('app.stopPlayback')}>Stop playback<//>
     ` : connected ? html`
+      ${app.openPortLine && html`<${OpenPortLine} app=${app} />`}
       <div class="row">
         <${Button} kind="link" onClick=${openPanel}>Details<//>
         <span class="spacer"></span>
@@ -109,6 +117,7 @@ function ConnectionCard({ app }) {
         options=${[{ value: 'ssm', label: 'SSM cable', title: "SSM: Subaru's own protocol over a USB cable, for cars up to about 2014." },
                    { value: 'obd', label: 'OBD-II', title: 'OBD-II: standard protocol over an ELM327 adapter, for newer cars.' }]} />
       <${DevicePicker} app=${app} wide />
+      ${app.openPortLine && html`<${OpenPortLine} app=${app} />`}
       <${Button} kind="link" class="caption" onClick=${() => send('setup.showModeChooser')}>Which one do I need?<//>
       <${Button} kind="prominent" size="large" wide icon="zap" disabled=${!app.canConnect}
         title=${app.canConnect ? 'Connect to the car (Ctrl+K)' : `Pick ${app.mode === 'obd' ? 'an adapter' : 'a cable'} first, or try the demo car`}

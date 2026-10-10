@@ -264,6 +264,108 @@ struct OBDSessionTests {
     }
 }
 
+@Suite("Freeze frame (OBD-II service 02)", .serialized)
+struct FreezeFrameTests {
+    /// A car that answers from a table: the request's bytes to every answer it gets.
+    struct Car: OBDRequester {
+        var table: [[UInt8]: [[UInt8]]]
+        func answers(toOBD request: [UInt8]) throws -> [[UInt8]] { table[request] ?? [] }
+    }
+
+    @Test func readsTheFrameThroughAnAdapter() async throws {
+        let sim = SimulatedELM(latency: 0.002, searchDelay: 0.01)
+        let session = OBDSession(channel: sim)
+        defer { session.close() }
+        _ = try await session.connect()
+        let frame = try #require(try await session.run { try FreezeFrame.read(from: $0) })
+        #expect(frame.code == "P0420")
+        #expect(frame.summary.hasSuffix("stored P0420"))
+        // How the car was being driven first, then what the engine made of it.
+        #expect(frame.readings.map(\.pid) == [0x0C, 0x0D, 0x04, 0x11, 0x05, 0x0F, 0x0B, 0x10, 0x03, 0x06, 0x07, 0x0E])
+        let lines = frame.lines()
+        #expect(lines.first { $0.name == "Engine Speed" }?.value == "2350 rpm")
+        #expect(lines.first { $0.name == "Coolant Temperature" }?.value == "91 C")
+        #expect(lines.first { $0.name == "Fuel System Status" }?.value.hasPrefix("Closed loop") == true)
+        // In the units the app is set to.
+        let imperial = frame.lines { $0.conversions.first { ["mph", "F"].contains($0.units) } }
+        #expect(imperial.first { $0.name == "Vehicle Speed" }?.value == "48 mph")
+        #expect(imperial.first { $0.name == "Coolant Temperature" }?.value == "196 F")
+        #expect(imperial.first { $0.name == "Engine Speed" }?.value == "2350 rpm")
+
+        // Clearing the codes takes the frame with it.
+        try await session.run { try $0.clearTroubleCodes() }
+        #expect(try await session.run { try FreezeFrame.read(from: $0) } == nil)
+    }
+
+    @Test func worksOnOlderBusesToo() async throws {
+        let sim = SimulatedELM(latency: 0.002, searchDelay: 0.01)
+        var car = sim.car
+        car.usesCAN = false
+        car.confirmedCodes = ["P0301"]
+        sim.car = car
+        let session = OBDSession(channel: sim)
+        defer { session.close() }
+        _ = try await session.connect()
+        let frame = try #require(try await session.run { try FreezeFrame.read(from: $0) })
+        #expect(frame.code == "P0301")
+        #expect(frame.readings.count == 12)
+    }
+
+    @Test func noStoredCodeMeansNoFrame() throws {
+        #expect(try FreezeFrame.read(from: Car(table: [:])) == nil)
+        #expect(try FreezeFrame.read(from: Car(table: [[0x02, 0x02, 0x00]: [[0x42, 0x02, 0x00, 0x00, 0x00]]])) == nil)
+    }
+
+    @Test func theControlUnitWithTheFrameIsTheOneListenedTo() throws {
+        // The transmission says "none", the engine has one.
+        let car = Car(table: [
+            [0x02, 0x02, 0x00]: [[0x42, 0x02, 0x00, 0x00, 0x00], [0x42, 0x02, 0x00, 0x01, 0x71]],
+            [0x02, 0x00, 0x00]: [[0x42, 0x00, 0x00, 0x48, 0x10, 0x00, 0x00]],   // values 02, 05 and 0C
+            [0x02, 0x05, 0x00]: [[0x42, 0x05, 0x00, 0x30]],
+            [0x02, 0x0C, 0x00]: [[0x42, 0x0C, 0x00, 0x0C, 0x80]],
+        ])
+        let frame = try #require(try FreezeFrame.read(from: car))
+        #expect(frame.code == "P0171")
+        #expect(frame.readings == [.init(pid: 0x0C, data: [0x0C, 0x80]), .init(pid: 0x05, data: [0x30])])
+        #expect(frame.lines().map(\.value) == ["800 rpm", "8 C"])
+    }
+
+    @Test func aCarThatDoesNotListItsValuesIsAskedForTheUsualOnes() throws {
+        let car = Car(table: [
+            [0x02, 0x02, 0x00]: [[0x42, 0x02, 0x00, 0x04, 0x20]],
+            [0x02, 0x0D, 0x00]: [[0x42, 0x0D, 0x00, 0x64]],
+            // An answer for another value than the one asked is not taken.
+            [0x02, 0x05, 0x00]: [[0x42, 0x0C, 0x00, 0x00, 0x00]],
+        ])
+        let frame = try #require(try FreezeFrame.read(from: car))
+        #expect(frame.readings == [.init(pid: 0x0D, data: [0x64])])
+        #expect(frame.lines().first?.value == "100 km/h")
+    }
+
+    @Test func aLinkThatDropsIsNotWaitedForValueAfterValue() {
+        // Answers which code the frame is for, then the adapter is gone.
+        final class DroppingCar: OBDRequester {
+            var asked = 0
+            func answers(toOBD request: [UInt8]) throws -> [[UInt8]] {
+                asked += 1
+                if asked == 1 { return [[0x42, 0x02, 0x00, 0x04, 0x20]] }
+                throw OBDError.disconnected
+            }
+        }
+        let car = DroppingCar()
+        #expect(throws: OBDError.disconnected) { _ = try FreezeFrame.read(from: car) }
+        // The code, the list of values, and two values: not all fourteen.
+        #expect(car.asked == 4)
+    }
+
+    @Test func fuelSystemStatusIsSaidInWords() {
+        #expect(FreezeFrame.fuelSystemStatus(1).hasPrefix("Open loop"))
+        #expect(FreezeFrame.fuelSystemStatus(2).hasPrefix("Closed loop"))
+        #expect(FreezeFrame.fuelSystemStatus(8).contains("fault"))
+        #expect(FreezeFrame.fuelSystemStatus(3) == "Unknown (3)")
+    }
+}
+
 @Suite("OBD-II resilience", .serialized)
 struct OBDResilienceTests {
     func makeSession(_ configure: (SimulatedELM) -> Void = { _ in }) -> (OBDSession, SimulatedELM) {

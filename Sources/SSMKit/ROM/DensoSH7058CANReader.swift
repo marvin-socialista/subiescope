@@ -10,9 +10,11 @@ import Foundation
 /// Ported from the READ path of FastECU's `flash_ecu_subaru_denso_sh7058_can.cpp` (GPLv3):
 /// `connect_bootloader`, `upload_kernel` and `read_mem`. The write path was deliberately not ported.
 ///
-/// UNTESTED ON A CAR. This has never run against real hardware here. The pure pieces it relies on
-/// (seed-key, kernel cipher and framing, page maths) are unit-tested; the request/response sequence is
-/// exercised end to end only against a simulated ECU. Treat it as experimental.
+/// It has read one real car: a 2009 JDM Impreza WRX STI (ECU ID 6904784007, AZ1G500F) through a
+/// Tactrix OpenPort on 10 October 2026, 1 MB in 55 seconds, with every checksum in the ROM right.
+/// Through an OBDLink (STN) adapter it has never run on a car. The pure pieces it relies on
+/// (seed-key, kernel cipher and framing, page maths) are unit-tested, and the request/response
+/// sequence runs end to end against a simulated ECU. Treat it as experimental.
 public final class DensoSH7058CANReader {
     public enum Phase: Sendable, Equatable {
         case connecting
@@ -154,13 +156,15 @@ public final class DensoSH7058CANReader {
         // Security access: ask for the seed, answer with the stock key.
         let seedReply = try transport.request([0x27, 0x01], timeout: 2)
         guard seedReply.count >= 6, seedReply[0] == 0x67, seedReply[1] == 0x01 else {
-            throw ReaderError.connectFailed("the ECU did not give a security seed (\(Self.hex(seedReply)))")
+            throw ReaderError.connectFailed(Self.securityRefusal(seedReply)
+                ?? "the ECU did not give a security seed (\(Self.hex(seedReply)))")
         }
         let seed = Array(seedReply[2..<6])
         let key = DensoCAN.stockKey(fromSeed: seed)
         let keyReply = try transport.request([0x27, 0x02] + key, timeout: 2)
         guard keyReply.count >= 2, keyReply[0] == 0x67, keyReply[1] == 0x02 else {
-            throw ReaderError.connectFailed("the ECU rejected the security key (\(Self.hex(keyReply)))")
+            throw ReaderError.connectFailed(Self.securityRefusal(keyReply)
+                ?? "the ECU rejected the security key (\(Self.hex(keyReply)))")
         }
 
         // Enter the programming session that matches the diagnostic session it accepted.
@@ -201,7 +205,9 @@ public final class DensoSH7058CANReader {
             if block < prepared.blockCount {
                 message.append(contentsOf: payload[(block * 128)..<(block * 128 + 128)])
             }
-            // The ECU acks each block; FastECU does not inspect the ack, so neither do we.
+            // The ECU acks each block; FastECU does not inspect the ack, so neither do we. On a real
+            // ECU (a 2009 STI) every block of data is answered with F6, and the final empty one with
+            // 7F B6 13: it does not take that one, and the read goes through all the same.
             _ = try transport.request(message, timeout: 2)
             report(.uploadingKernel, bytesRead: 0,
                    "Loading the helper program into the ECU (\(Int(Double(block) / Double(prepared.blockCount) * 100))%)",
@@ -299,5 +305,20 @@ public final class DensoSH7058CANReader {
 
     static func hex(_ bytes: [UInt8]) -> String {
         bytes.isEmpty ? "no reply" : bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
+
+    /// What the ECU means when it refuses the unlock (`7F 27` and a reason), in words a person can act
+    /// on. After wrong keys an ECU refuses every new try for a short while: about ten seconds on the
+    /// 2007 Forester XT that tuneforge's author measured (https://github.com/firefighter-19/tuneforge).
+    static func securityRefusal(_ reply: [UInt8]) -> String? {
+        guard reply.count >= 3, reply[0] == 0x7F, reply[1] == 0x27 else { return nil }
+        switch reply[2] {
+        case 0x35:
+            return "the ECU did not accept the key. This only works on an ECU with its original software: one tuned with EcuTek, Cobb or similar has a key of its own. Trying again will not help, and after a second wrong key the ECU refuses every try for about 10 seconds."
+        case 0x36, 0x37:
+            return "the ECU has locked itself for a moment after a wrong key. Leave the ignition on, wait 10 seconds and try again."
+        default:
+            return nil
+        }
     }
 }

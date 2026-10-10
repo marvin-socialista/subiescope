@@ -115,7 +115,7 @@ struct ROMTests {
 
     @Test func disclaimerSaysItNeverWritesToTheCar() {
         #expect(ROMDisclaimer.full.contains("never erases or writes the ECU's program"))
-        #expect(ROMDisclaimer.full.contains("not been tested on a real car"))
+        #expect(ROMDisclaimer.full.contains("worked on one car so far"))
         #expect(ROMDisclaimer.noWriteToCar.contains("never writes to the car"))
     }
 }

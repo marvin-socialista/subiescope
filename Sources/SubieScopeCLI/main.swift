@@ -13,6 +13,8 @@ commands:
   params                     List the parameters this ECU supports
   log                        Print live values (and optionally write a CSV)
   codes                      Read trouble codes
+  freeze                     Read the freeze frame: what the engine was doing when a trouble code was
+                             stored (through a Tactrix OpenPort, over CAN)
   demo                       Run the demo ECU on a pseudo terminal for testing
   demo --openport            Run the demo ECU behind a simulated Tactrix OpenPort 2.0 instead
   demo --obd                 Run a simulated OBD-II adapter instead, as a USB cable and as a Wi-Fi adapter,
@@ -26,8 +28,10 @@ commands:
 options:
   --port PATH                Serial device, on Windows a COM port (default: first FTDI/USB port)
   --demo                     Use the built-in demo ECU instead of a cable
-  --openport                 The port is a Tactrix OpenPort 2.0 (experimental; a real one is recognised
+  --openport                 The port is a Tactrix OpenPort 2.0 (a real one is recognised
                              by itself). With --demo: put a simulated OpenPort in front of the demo ECU
+  --can                      With an OpenPort: talk to the ECU over CAN instead of the K-line
+                             (experimental; Subarus from about 2008 on)
   --scenario NAME            Demo only: what the demo car does (idle, cruise, wotPull, …)
   --fault NAME               Demo only: simulate a fault (dirtyMAF, vacuumLeak, knock, …)
   --defs FILE                RomRaider logger definition XML (default: built-in)
@@ -35,6 +39,7 @@ options:
   --csv FILE                 Also write the log to FILE
   --seconds N                Stop `log` after N seconds
   --no-fast                  Disable fast poll (continuous mode)
+  --verbose                  Also print the raw traffic for params, log, codes and freeze (probe always does)
   --tcp PORT                 demo --obd only: the port of the simulated Wi-Fi adapter (default 35000)
 """
 
@@ -68,7 +73,7 @@ func loadDefinitions() -> LoggerDefinitions {
 
 var demoECU: DemoECU?
 var demoOpenPort: SimulatedOpenPort?
-/// The chosen port is a Tactrix OpenPort 2.0 (experimental), not a KKL cable.
+/// The chosen port is a Tactrix OpenPort 2.0, not a KKL cable.
 var throughOpenPort = false
 
 func resolvePort(_ defs: LoggerDefinitions?) -> String {
@@ -83,6 +88,8 @@ func resolvePort(_ defs: LoggerDefinitions?) -> String {
             }
             if flag("--openport") {
                 demoOpenPort = try SimulatedOpenPort(ecu: demoECU!.ecu)
+                let car = demoECU!
+                demoOpenPort!.canECU = { car.answerOverCAN($0) }
                 throughOpenPort = true
                 return demoOpenPort!.devicePath
             }
@@ -105,7 +112,9 @@ func resolvePort(_ defs: LoggerDefinitions?) -> String {
 
 func makeSession(_ defs: LoggerDefinitions?, verbose: Bool) -> SSMSession {
     let path = resolvePort(defs)
-    let session = SSMSession(portPath: path, openPort: throughOpenPort)
+    let overCAN = throughOpenPort && flag("--can")
+    if flag("--can") && !throughOpenPort { fail("--can needs a Tactrix OpenPort 2.0: a KKL cable only has the K-line") }
+    let session = SSMSession(portPath: path, openPort: throughOpenPort, overCAN: overCAN)
     session.fastPoll = !flag("--no-fast")
     if let demoECU { session.transport.onBreak = { demoECU.ecu.simulateBreak() } }
     if verbose {
@@ -121,7 +130,7 @@ func makeSession(_ defs: LoggerDefinitions?, verbose: Bool) -> SSMSession {
             print("  \(arrow) \(bytes.hexString)")
         }
     }
-    print("Port: \(path)\(demoECU != nil ? " (demo ECU)" : "")\(throughOpenPort ? " (Tactrix OpenPort 2.0, experimental)" : "")")
+    print("Port: \(path)\(demoECU != nil ? " (demo ECU)" : "")\(throughOpenPort ? " (Tactrix OpenPort 2.0\(overCAN ? ", over CAN, experimental" : ""))" : "")")
     return session
 }
 
@@ -156,7 +165,7 @@ case "ports":
 case "probe":
     let defs = try? LoggerDefinitions.bundled()
     let session = makeSession(defs, verbose: true)
-    print("Sending init request (0xBF) at 4800 baud…")
+    print(session.overCAN ? "Sending init request (0xAA) over CAN…" : "Sending init request (0xBF) at 4800 baud…")
     let identity = blocking { try await session.connect() }
     print("")
     print("ECU ID:        \(identity.ecuID)")
@@ -170,6 +179,26 @@ case "probe":
         let volts = blocking { try await session.run { _ in try cable.batteryVoltage() } }
         print("Cable:         Tactrix OpenPort 2.0, firmware \(cable.firmware ?? "?"), car battery \(String(format: "%.1f", volts)) V")
     }
+    // A second and a third exchange: an ECU that identifies itself does not always go on to give values.
+    // Coolant temperature (0x08) and engine speed (0x0E, 0x0F) are in every SSM2 engine ECU.
+    let readTest: (bytes: [UInt8], first: Double, second: Double, error: String?) = blocking {
+        let started = Date()
+        do {
+            let bytes = try await session.run { try $0.read(addresses: [0x08, 0x0E, 0x0F]) }
+            let first = Date().timeIntervalSince(started)
+            let again = Date()
+            _ = try await session.run { try $0.read(addresses: [0x08, 0x0E, 0x0F]) }
+            return (bytes, first, Date().timeIntervalSince(again), nil)
+        } catch {
+            return ([], 0, 0, error.localizedDescription)
+        }
+    }
+    if let error = readTest.error {
+        print("Read test:     FAILED. The ECU identified itself but did not give values: \(error)")
+    } else {
+        let rpm = (Int(readTest.bytes[1]) << 8 | Int(readTest.bytes[2])) / 4
+        print("Read test:     coolant \(Int(readTest.bytes[0]) - 40) °C, engine speed \(rpm) rpm (\(Int(readTest.first * 1000)) ms, then \(Int(readTest.second * 1000)) ms)")
+    }
     if let defs {
         let set = defs.parameterSet(for: identity)
         let count = { (k: ParameterKind) in set.parameters.filter { $0.kind == k }.count }
@@ -178,21 +207,21 @@ case "probe":
             print("               (ECU ID not in the definitions: no IAM/knock learning parameters)")
         }
     }
-    session.close()
+    session.closeAndWait()
 
 case "params":
     let defs = loadDefinitions()
-    let session = makeSession(defs, verbose: false)
+    let session = makeSession(defs, verbose: flag("--verbose"))
     let identity = blocking { try await session.connect() }
     for p in defs.parameterSet(for: identity).parameters {
         let units = p.conversions.map(\.units).joined(separator: ", ")
         print("\(p.id)\t\(p.name)\t[\(units)]")
     }
-    session.close()
+    session.closeAndWait()
 
 case "codes":
     let defs = loadDefinitions()
-    let session = makeSession(defs, verbose: false)
+    let session = makeSession(defs, verbose: flag("--verbose"))
     let identity = blocking { try await session.connect() }
     let set = defs.parameterSet(for: identity)
     let report = blocking { try await session.run { try TroubleCodeReport.read(with: $0, definitions: set.diagnosticCodes) } }
@@ -200,11 +229,25 @@ case "codes":
     for c in report.current { print("  \(c.name)") }
     print("Memorized codes: \(report.memorized.isEmpty ? "none" : "")")
     for c in report.memorized { print("  \(c.name)") }
-    session.close()
+    session.closeAndWait()
+
+case "freeze":
+    let session = makeSession(try? LoggerDefinitions.bundled(), verbose: flag("--verbose"))
+    guard session.openPort != nil else {
+        fail("the freeze frame is read over CAN, which needs a Tactrix OpenPort 2.0 (in the app, an OBD-II adapter reads it too)")
+    }
+    _ = blocking { try await session.connect() }
+    if let frame = blocking({ try await session.readFreezeFrame() }) {
+        print("Freeze frame: \(frame.summary)")
+        for line in frame.lines() { print("  \(line.name): \(line.value)") }
+    } else {
+        print("Freeze frame: the ECU has none stored (normal without stored trouble codes)")
+    }
+    session.closeAndWait()
 
 case "log":
     let defs = loadDefinitions()
-    let session = makeSession(defs, verbose: false)
+    let session = makeSession(defs, verbose: flag("--verbose"))
     let identity = blocking { try await session.connect() }
     let set = defs.parameterSet(for: identity)
     let wanted = option("--params")?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -231,8 +274,14 @@ case "log":
     print(items.map { "\($0.parameter.name) (\($0.conversion.units))" }.joined(separator: " | "))
     let all = Dictionary(set.parameters.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     let lock = NSLock()
+    session.onRefused = { ids in
+        print("! the ECU refuses these over CAN, they are left out: \(ids.compactMap { all[$0]?.name }.joined(separator: ", "))")
+    }
+    nonisolated(unsafe) var rows = 0
+    let logStart = Date()
     session.startPolling(items: items, allParameters: all, onSample: { sample in
         lock.lock(); defer { lock.unlock() }
+        rows += 1
         let line = polled.map { item in
             sample.values[item.parameter.id].map { item.conversion.formatted($0) } ?? "-"
         }.joined(separator: " | ")
@@ -246,9 +295,12 @@ case "log":
     let seconds = option("--seconds").flatMap(Double.init) ?? .infinity
     let end = Date().addingTimeInterval(seconds)
     while Date() < end { Thread.sleep(forTimeInterval: 0.2) }
-    session.stopPolling()
+    // Ends the ECU's stream and lets go of the cable before the program ends.
+    session.closeAndWait()
     lock.lock()
     writer?.close()
+    let elapsed = Date().timeIntervalSince(logStart)
+    print(String(format: "%d samples in %.1f s: %.1f per second", rows, elapsed, Double(rows) / max(elapsed, 0.001)))
     lock.unlock()
     if let path = option("--csv") { print("Saved \(path)") }
 

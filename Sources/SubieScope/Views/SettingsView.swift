@@ -68,9 +68,13 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
 
                 if model.mode == .ssm {
-                    Toggle("Tactrix OpenPort 2.0 cable (experimental)", isOn: $model.openPortOn)
-                        .disabled(model.connection.isConnected)
-                    Text("Lets you connect with a Tactrix OpenPort 2.0 instead of a KKL cable. It needs no driver: plug it in and press Connect. Take the microSD card out of the cable first. This is new and has not been tested with a real OpenPort yet, so it may not work on yours. With Advanced mode on, it can also read the ROM from the car.")
+                    Picker("Tactrix OpenPort 2.0 talks over", selection: $model.openPortCAN) {
+                        Text("K-line").tag(false)
+                        Text("CAN (experimental)").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(model.connection == .connecting)
+                    Text(AppModel.openPortCANNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

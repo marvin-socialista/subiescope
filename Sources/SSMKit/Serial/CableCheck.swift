@@ -22,7 +22,7 @@ public struct USBCable: Identifiable, Hashable, Sendable {
     public var chip: CableChip { CableChip(vendorID: vendorID, productID: productID) }
 
     /// Whether SubieScope can connect through it right now. A Tactrix OpenPort only counts when its
-    /// (experimental) support is turned on.
+    /// support is turned on in Settings.
     public func isUsable(openPortSupport: Bool) -> Bool {
         serialPath != nil && (chip != .openPort2 || openPortSupport)
     }
@@ -66,7 +66,7 @@ public enum CableChip: Sendable, Hashable {
         case .cp210x:
             return "Windows usually installs the driver for Silicon Labs chips by itself. If no COM port shows up, install the CP210x VCP driver from silabs.com."
         case .openPort2:
-            return "The OpenPort 2.0 needs Tactrix's own driver on Windows (it comes with EcuFlash). SubieScope's support for it is new and experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings to use it. If there is a microSD card in the cable, take it out and plug the cable in again."
+            return "An original OpenPort 2.0 needs Tactrix's own driver on Windows (it comes with EcuFlash). Is yours a replica? Then do NOT install Tactrix's driver or EcuFlash, and do not plug it into a PC that has them: they update the cable's firmware, and that breaks a replica for good. Windows 10 and 11 should give a replica a COM port by themselves, though that has not been tried yet. SubieScope's support for the cable on Windows is new and experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings to use it. If there is a microSD card in the cable, take it out and plug the cable in again."
         case .unknown:
             return "SubieScope doesn't recognise this chip. KKL cables with an FTDI chip work best."
         }
@@ -81,7 +81,7 @@ public enum CableChip: Sendable, Hashable {
         case .cp210x:
             return "Silicon Labs cables need the CP210x VCP driver from silabs.com. Allow it in System Settings › Privacy & Security after installing."
         case .openPort2:
-            return "The OpenPort 2.0 needs no driver on a Mac. SubieScope's support for it is new and experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings to use it. If there is a microSD card in the cable, take it out and plug the cable in again."
+            return "The OpenPort 2.0 needs no driver on a Mac, but its serial port is not there. If there is a microSD card in the cable, take it out and plug the cable in again."
         case .unknown:
             return "SubieScope doesn't recognise this chip. KKL cables with an FTDI chip work best."
         }

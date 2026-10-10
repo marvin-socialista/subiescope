@@ -17,7 +17,7 @@ public enum ROMDisclaimer {
     Reading the ROM from the car is the one thing here that talks to the car. It loads a small \
     helper program into the ECU's memory and copies the ROM out. It only reads: it never erases or \
     writes the ECU's program, and the helper program is gone once you turn the ignition off and on \
-    again. This is new and has not been tested on a real car yet, so it may not work on yours, and \
+    again. This is new and has worked on one car so far, so it may not work on yours, and \
     you use it at your own risk.
 
     Editing a tune is a different thing from logging and diagnostics. The numbers in a ROM decide \

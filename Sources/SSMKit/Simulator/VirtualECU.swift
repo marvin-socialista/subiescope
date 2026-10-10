@@ -159,7 +159,44 @@ public final class VirtualECU: @unchecked Sendable {
         SSMPacket(destination: SSMDevice.tester.rawValue, source: SSMDevice.engine.rawValue, data: data)
     }
 
-    func handle(_ request: SSMPacket) -> SSMPacket? {
+    /// Addresses the ECU refuses to read over CAN (it answers 7F A8 12), as tuneforge's author saw a
+    /// 2007 Forester XT do for values in its RAM. Empty: it reads everything.
+    public var refusedOverCAN: Set<UInt32> {
+        get { lock.lock(); defer { lock.unlock() }; return _refusedOverCAN }
+        set { lock.lock(); _refusedOverCAN = newValue; lock.unlock() }
+    }
+    private var _refusedOverCAN: Set<UInt32> = []
+
+    /// Answers a request that came in over CAN: the same commands without the K-line's header and
+    /// checksum, `AA` to identify (answered with `EA`), no continuous mode, and a spoken "no"
+    /// (7F, the command, a reason) where the K-line ECU stays silent. Returns nil for silence.
+    public func answerOverCAN(_ request: [UInt8]) -> [UInt8]? {
+        guard isPoweredOn, let command = request.first else { return nil }
+        var data = request
+        switch command {
+        case OpenPortCANLine.identifyCommand:
+            data[0] = SSMCommand.initECU
+        case SSMCommand.readAddresses:
+            guard data.count >= 5, (data.count - 2) % 3 == 0 else { return [0x7F, command, 0x12] }
+            data[1] = 0x00
+            let refused = refusedOverCAN
+            var i = 2
+            while i + 2 < data.count {
+                if refused.contains(UInt32(data[i]) << 16 | UInt32(data[i + 1]) << 8 | UInt32(data[i + 2])) { return [0x7F, command, 0x12] }
+                i += 3
+            }
+        case SSMCommand.readBlock, SSMCommand.writeAddress:
+            break
+        default:
+            return [0x7F, command, 0x11]
+        }
+        let packet = SSMPacket(destination: SSMDevice.engine.rawValue, source: SSMDevice.tester.rawValue, data: data)
+        guard var answer = handle(packet, lengthLimit: false)?.data, !answer.isEmpty else { return nil }
+        if command == OpenPortCANLine.identifyCommand { answer[0] = SSMCommand.response(to: command) }
+        return answer
+    }
+
+    func handle(_ request: SSMPacket, lengthLimit: Bool = true) -> SSMPacket? {
         guard let command = request.command else { return nil }
         let p = Array(request.payload)
         switch command {
@@ -174,7 +211,7 @@ public final class VirtualECU: @unchecked Sendable {
                 i += 3
             }
             // Too long: no answer at all, only the echo the cable makes by itself.
-            guard request.data.count + 5 + addresses.count + 6 <= maxExchangeBytes else { return nil }
+            guard !lengthLimit || request.data.count + 5 + addresses.count + 6 <= maxExchangeBytes else { return nil }
             lock.lock()
             streaming = p[0] == 0x01 ? addresses : nil
             lock.unlock()

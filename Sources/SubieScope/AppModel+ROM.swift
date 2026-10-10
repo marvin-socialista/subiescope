@@ -4,7 +4,7 @@ import SSMKit
 /// Reading a ROM image off the car's engine ECU over OBD-II CAN. This is the one place in the app that
 /// loads a helper program into the ECU and dumps its flash; it never writes to flash. It is gated
 /// behind Advanced mode, and needs either an OBD-II connection with an STN-based adapter (OBDLink EX)
-/// or a connection through a Tactrix OpenPort 2.0 (experimental), which reaches the CAN bus too.
+/// or a connection through a Tactrix OpenPort 2.0, which reaches the CAN bus too.
 ///
 /// UNTESTED ON A CAR. The read sequence has only ever run against a simulated ECU here. See the
 /// reader (`DensoSH7058CANReader`) and the transports (`ISOTPELMTransport`, `OpenPortISOTPTransport`).
@@ -22,7 +22,7 @@ extension AppModel {
         if mode != .obd {
             // With the SSM cable only a Tactrix OpenPort reaches the ECU's CAN side.
             if openPortSession != nil, connection.isConnected {
-                return "Ready, through the Tactrix OpenPort (experimental). Make sure the ignition is ON and the engine is OFF before you start."
+                return "Ready, through the Tactrix OpenPort. Make sure the ignition is ON and the engine is OFF before you start."
             }
             if openPortOn, !connection.isConnected { return "Connect to the car with the Tactrix OpenPort first." }
             return "Reading a ROM from the car needs an OBD-II (ELM327/STN) connection or a Tactrix OpenPort 2.0, not a KKL cable."
@@ -119,7 +119,8 @@ extension AppModel {
     }
 
     /// The same read through a Tactrix OpenPort 2.0, which reaches the ECU's CAN side while the app
-    /// is connected over the K-line. EXPERIMENTAL: never run with a real cable or car.
+    /// is connected over the K-line. The same transport and reader read a 2009 JDM STI on 10 October
+    /// 2026; this function itself, with its progress in the window, has not been run on a car yet.
     private func readROMThroughOpenPort() async -> ROMImage? {
         guard let session = openPortSession, let cable = session.openPort, connection.isConnected else {
             romReadStatus = "Connect to the car with a Tactrix OpenPort first."
@@ -136,7 +137,7 @@ extension AppModel {
         romReadError = nil
         romReadStatus = "Getting ready…"
         romReadCancel.reset()
-        log("Starting ROM read from the car through the Tactrix OpenPort (advanced, experimental). Reads flash only; never writes to the ECU.")
+        log("Starting ROM read from the car through the Tactrix OpenPort (advanced). Reads flash only; never writes to the ECU.")
 
         // The read takes over the cable, so stop live polling first.
         session.stopPolling()

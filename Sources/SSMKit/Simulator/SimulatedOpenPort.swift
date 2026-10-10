@@ -7,7 +7,8 @@ import Foundation
 /// It speaks the cable's protocol as openport-j2534's notes describe it: numbered commands, text
 /// replies and binary message frames. Behind its K-line sits a `VirtualECU` (the demo car); behind its
 /// CAN channel sits whatever `canECU` answers. How it hands over K-line bytes from the ECU follows
-/// the layout three open-source drivers agree on; that part was never measured on a real cable.
+/// the layout three open-source drivers agree on, which is also what a real cable did when this
+/// first ran on one.
 public final class SimulatedOpenPort: @unchecked Sendable {
     /// The device to open, e.g. /dev/ttys012.
     public let devicePath: String
@@ -292,6 +293,9 @@ public final class SimulatedOpenPort: @unchecked Sendable {
         frame(channel, status: 0x10, body: timestamp() + identifier)   // the transmit went out
         // A short frame that is not padded to eight bytes is ignored by a real ECU.
         if request.count < 7, flags & 0x40 == 0 { return }
+        // Only the engine ECU is on this bus. A request to another control unit is acknowledged by it
+        // (it is a node on the bus) and answered by nobody.
+        guard identifier == [0x00, 0x00, 0x07, 0xE0] else { return }
         // Replies only get through a flow control filter, which also names the ECU's identifier.
         guard let filter = open.filters.values.first(where: { $0.type == 3 && $0.messages.count == 3 && $0.messages[2] == identifier }),
               let answer = canECU?(request), !answer.isEmpty else { return }

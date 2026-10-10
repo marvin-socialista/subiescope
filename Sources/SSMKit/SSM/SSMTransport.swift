@@ -4,6 +4,9 @@ public enum SSMError: Error, LocalizedError, Equatable {
     case timeout(command: UInt8, receivedBytes: Int, sawEcho: Bool)
     case unexpectedResponse(String)
     case writeRejected(address: UInt32, wrote: UInt8, got: UInt8)
+    /// The control unit answered "no" (7F and what it refuses). Over CAN an ECU says so; on the
+    /// K-line it mostly just stays silent.
+    case refused(command: UInt8, answer: [UInt8])
 
     public var errorDescription: String? {
         switch self {
@@ -20,6 +23,8 @@ public enum SSMError: Error, LocalizedError, Equatable {
             return "Unexpected response from the control unit: \(detail)"
         case .writeRejected(let address, let wrote, let got):
             return String(format: "The control unit did not accept writing 0x%02X to 0x%06X (answered 0x%02X).", wrote, address, got)
+        case .refused(let command, let answer):
+            return String(format: "The control unit refused the request (command 0x%02X, it answered ", command) + answer.hexString + ")."
         }
     }
 }
@@ -104,7 +109,7 @@ public final class SSMTransport {
                 guard frame.destination == request.source && frame.source == request.destination else { continue }
                 traffic?(.received, (try? frame.encoded()) ?? [])
                 if frame.command == 0x7F {
-                    throw SSMError.unexpectedResponse("negative response \(frame.data.hexString)")
+                    throw SSMError.refused(command: command, answer: frame.data)
                 }
                 if frame.command != SSMCommand.response(to: command) {
                     throw SSMError.unexpectedResponse(

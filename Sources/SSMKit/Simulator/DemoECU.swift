@@ -60,6 +60,14 @@ public final class DemoECU: @unchecked Sendable {
         ecu.onWrite = { address, value in memory.write(address: address, value: value) }
     }
 
+    /// What the demo car's engine ECU answers on CAN, for the CAN side of a simulated OpenPort: the
+    /// SSM commands, and the freeze frame (OBD-II service 02) of its stored code.
+    public func answerOverCAN(_ request: [UInt8]) -> [UInt8]? {
+        guard ecu.isPoweredOn else { return nil }
+        if request.first == 0x02 { return DemoFreezeFrame.answer(to: request, code: memory.storedCode) }
+        return ecu.answerOverCAN(request)
+    }
+
     public func stop() {
         ecu.stop()
     }
@@ -525,6 +533,13 @@ final class DemoMemory: @unchecked Sendable {
         defer { lock.unlock() }
         if Date().timeIntervalSince(builtAt) > 0.04 { rebuild() }
         return bytes[address] ?? 0
+    }
+
+    /// The stored trouble code the ECU kept a freeze frame for. Gone once the memory is cleared.
+    var storedCode: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return codes.first { memorizedCodeIDs.contains($0.id) }?.code
     }
 
     func write(address: UInt32, value: UInt8) -> UInt8 {

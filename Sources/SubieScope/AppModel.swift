@@ -86,12 +86,54 @@ final class AppModel {
     private var demoECU: DemoECU?
     /// A simulated Tactrix OpenPort between the app and the demo car (testing: -demoCable openport).
     private var demoOpenPort: SimulatedOpenPort?
-    /// Experimental: use a Tactrix OpenPort 2.0 as the cable in SSM mode.
-    var openPortOn: Bool = UserDefaults.standard.bool(forKey: "openPortOn") {
+    /// Whether a Tactrix OpenPort 2.0 is used as the cable in SSM mode. On a Mac it always is, like
+    /// any other cable: it has run on a real cable and car there. On a PC it never has, so there it
+    /// stays a setting, experimental and off until someone turns it on.
+    var openPortOn: Bool = AppModel.openPortIsBuiltIn || UserDefaults.standard.bool(forKey: "openPortOn") {
         didSet {
+            if Self.openPortIsBuiltIn {
+                if !openPortOn { openPortOn = true }
+                return
+            }
             UserDefaults.standard.set(openPortOn, forKey: "openPortOn")
             refreshPorts()
         }
+    }
+    /// True where the OpenPort needs no setting to be used.
+    static var openPortIsBuiltIn: Bool {
+        #if os(Windows)
+        return false
+        #else
+        return true
+        #endif
+    }
+    /// Which line a Tactrix OpenPort talks to the ECU over: the K-line, or (experimental) CAN.
+    var openPortCAN: Bool = UserDefaults.standard.bool(forKey: "openPortCAN") {
+        didSet {
+            UserDefaults.standard.set(openPortCAN, forKey: "openPortCAN")
+            // Connected through an OpenPort, the choice takes effect at once: the app connects again
+            // over the other line.
+            if oldValue != openPortCAN, openPortSession != nil, connection.isConnected {
+                Task { await connect() }
+            }
+        }
+    }
+    /// How the app talks to the ECU in SSM mode, for the ECU Info page.
+    var ssmProtocolText: String {
+        session?.overCAN == true ? "SSM over CAN (ISO 15765), 500 kbit/s" : "SSM2 over K-line (ISO 9141), 4800 baud 8N1"
+    }
+    /// Fast poll is the K-line's: over CAN every request is answered at once anyway.
+    var fastPollText: String {
+        session?.overCAN == true ? "Not needed over CAN" : (fastPoll ? "On" : "Off")
+    }
+    /// The sentence under that setting, on both fronts.
+    static let openPortCANNote = "How a Tactrix OpenPort 2.0 talks to the ECU. The K-line gives every value. CAN gives two to three times as many readings per second, on Subarus from about 2008 on, but on the one car it has been tried on the ECU keeps its ECU specific values to itself that way (the 4-byte IAM and knock corrections, among others): the app says which values it left out. Changing this while connected connects again over the other line."
+    /// Whether the cable in use, or the one chosen to connect with, is a Tactrix OpenPort: that is
+    /// when the choice between the K-line and CAN means something.
+    var openPortIsTheCable: Bool {
+        guard mode == .ssm, openPortOn else { return false }
+        if connection.isConnected || connection == .connecting { return session?.openPort != nil }
+        return isOpenPort(selectedPortID)
     }
     /// The SSM session while connected through a Tactrix OpenPort, for reading a ROM over its CAN side.
     var openPortSession: SSMSession? { session?.openPort == nil ? nil : session }
@@ -620,7 +662,7 @@ final class AppModel {
         ports = SerialPortList.available()
         cables = CableScanner.scan()
         let valid = Set(ports.map(\.path)).union([Self.demoPortID])
-        // A Tactrix OpenPort is only picked by itself while its (experimental) support is on.
+        // A Tactrix OpenPort is only picked by itself while its support is turned on in Settings.
         let usable = ports.filter { openPortOn || !$0.isOpenPort }
         if selectedPortID == nil || !valid.contains(selectedPortID!) || (!openPortOn && isOpenPort(selectedPortID)) {
             selectedPortID = usable.first(where: { $0.isFTDI })?.path ?? usable.first(where: { $0.isOpenPort })?.path
@@ -657,7 +699,7 @@ final class AppModel {
             return
         }
         if isOpenPort(portID) && !openPortOn {
-            connection = .failed("This cable is a Tactrix OpenPort 2.0. SubieScope's support for it is experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings first.")
+            connection = .failed("This cable is a Tactrix OpenPort 2.0. Turn on \"Tactrix OpenPort 2.0 cable\" in Settings first.")
             return
         }
         disconnect()
@@ -675,13 +717,22 @@ final class AppModel {
                 // Testing without the cable: -demoCable openport puts a simulated OpenPort in between.
                 if UserDefaults.standard.string(forKey: "demoCable") == "openport" {
                     let cable = try SimulatedOpenPort(ecu: demo.ecu)
+                    cable.canECU = { demo.answerOverCAN($0) }
                     demoOpenPort = cable
                     path = cable.devicePath
                     throughOpenPort = true
                 }
             }
-            let session = SSMSession(portPath: path, openPort: throughOpenPort)
+            let overCAN = throughOpenPort && openPortCAN
+            let session = SSMSession(portPath: path, openPort: throughOpenPort, overCAN: overCAN)
             session.fastPoll = fastPoll
+            session.onRefused = { [weak self, weak session] ids in
+                // Not from a connection that has ended since.
+                Task { @MainActor in
+                    guard let self, let session, session === self.session else { return }
+                    self.ssmValuesRefused(ids)
+                }
+            }
             if throughOpenPort {
                 // The cable's own conversation says the most when something does not work.
                 trafficLogBudget = 600
@@ -696,7 +747,11 @@ final class AppModel {
                 session.transport.onBreak = { demo.ecu.simulateBreak() }
             }
             self.session = session
-            log("Opening \(isDemo ? "demo ECU on \(path)" : path) at 4800 baud\(throughOpenPort ? " through a Tactrix OpenPort 2.0 (experimental)" : "")")
+            if overCAN {
+                log("Opening \(isDemo ? "demo ECU on \(path)" : path) over CAN through a Tactrix OpenPort 2.0 (experimental)")
+            } else {
+                log("Opening \(isDemo ? "demo ECU on \(path)" : path) at 4800 baud\(throughOpenPort ? " through a Tactrix OpenPort 2.0" : "")")
+            }
             let identity = try await session.connect()
             self.identity = identity
             log("ECU answered: ECU ID \(identity.ecuID), system ID \(identity.systemIDString), \(identity.capabilities.count) capability bytes")
@@ -748,6 +803,7 @@ final class AppModel {
         connection = .disconnected
         engineStatus = nil
         showPlaybackIfOpen()
+        freezeFrame = nil
         vin = nil
         vinState = "–"
         samplesPerSecond = 0
@@ -791,6 +847,8 @@ final class AppModel {
         let pressure = pressureUnit
         pollEpoch += 1
         let epoch = pollEpoch
+        // What the ECU refused of the old set of values. If it refuses one of the new set, it says so again.
+        obdNotice = nil
         session.startPolling(items: items, allParameters: parametersByID, conversionFor: { p in
             if let units = choice[p.id], let c = p.conversions.first(where: { $0.units == units }) { return c }
             return AppModel.preferredConversion(p.conversions, system: system, pressure: pressure)
@@ -949,6 +1007,7 @@ final class AppModel {
             let report = try await session.run { client in try TroubleCodeReport.read(with: client, definitions: defs) }
             currentCodes = report.current
             memorizedCodes = report.memorized
+            await readFreezeFrameThroughOpenPort()
             if let identity {
                 engineStatus = try? await session.run { client in try EngineDiagnostics.readStatus(with: client, identity: identity) }
             }
@@ -970,10 +1029,50 @@ final class AppModel {
             log("Clear memory command accepted")
             currentCodes = []
             memorizedCodes = []
+            freezeFrame = nil
             codeReadState = .idle
         } catch {
             clearState = "Clearing failed: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: Freeze frame
+
+    /// What the engine was doing when the ECU stored a trouble code, from the last read of the codes.
+    /// Nil when the ECU has none, and with a cable that cannot ask for it (a KKL cable).
+    var freezeFrame: FreezeFrame?
+
+    /// The freeze frame's values in the units the app is set to.
+    var freezeFrameLines: [FreezeFrame.Line] {
+        let system = unitSystem
+        let pressure = pressureUnit
+        return freezeFrame?.lines(conversion: { AppModel.preferredConversion($0.conversions, system: system, pressure: pressure) },
+                                  units: { $0.displayUnits }) ?? []
+    }
+
+    /// SSM has no freeze frame of its own, but an OpenPort can ask the ECU for the OBD-II one on CAN.
+    /// A car without CAN on its diagnostic plug has nothing to say there, which is no error.
+    private func readFreezeFrameThroughOpenPort() async {
+        freezeFrame = nil
+        guard let session = openPortSession else { return }
+        do {
+            freezeFrame = try await session.readFreezeFrame()
+            log(freezeFrame.map { "Freeze frame: stored for \($0.code), \($0.readings.count) values" } ?? "Freeze frame: none stored")
+        } catch {
+            log("Freeze frame not read: \(error.localizedDescription)")
+        }
+    }
+
+    /// The ECU refuses some of the chosen values over CAN: say so, instead of gauges that stay empty.
+    func ssmValuesRefused(_ ids: [String]) {
+        // A report that was on its way while the set of values changed may name one that is no longer asked for.
+        let asked = Set(polledItems.map(\.parameter.id))
+        let ids = ids.filter(asked.contains)
+        guard !ids.isEmpty else { return }
+        let names = ids.compactMap { parametersByID[$0]?.name }
+        for id in ids { latest[id] = nil }
+        obdNotice = "The ECU does not give these values over CAN: \(names.joined(separator: ", ")). The rest keeps coming. To read them, set the Tactrix OpenPort to K-line in Settings."
+        log("Refused over CAN: \(names.joined(separator: ", "))")
     }
 
     // MARK: ECU details

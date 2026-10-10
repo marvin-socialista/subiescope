@@ -155,14 +155,22 @@ struct RecipeDetailView: View {
                     .help("Make the demo car misbehave to see how the test reacts")
                 }
                 Spacer()
+                let canStart = model.connection.isConnected && binding.isRunnable && !(model.recipeRun?.isRunning ?? false)
                 Button {
                     model.startRecipe(recipe)
                 } label: {
-                    Label("Start", systemImage: "play.fill").frame(minWidth: 90)
+                    // The icon and the word are laid out and coloured here, not left to the button:
+                    // as a `Label` the front window drew this one as a blue button with nothing on it.
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                        Text("Start")
+                    }
+                    .foregroundStyle(canStart ? Color.white : Color.secondary)
+                    .frame(minWidth: 90)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(!model.connection.isConnected || !binding.isRunnable || (model.recipeRun?.isRunning ?? false))
+                .disabled(!canStart)
             }
             .padding(14)
             .background(.bar)
