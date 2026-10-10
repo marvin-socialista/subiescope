@@ -183,7 +183,7 @@ struct CableRow: View {
                 Text("· \(cable.chip.name)").foregroundStyle(.secondary)
             }
             if let path = cable.serialPath, usable {
-                Text("Ready as \((path as NSString).lastPathComponent). \(cable.chip == .ftdi ? "No driver needed." : cable.chip == .openPort2 ? "Experimental: not tested with a real OpenPort yet." : "")")
+                Text("Ready as \((path as NSString).lastPathComponent). \(cable.chip == .ftdi || cable.chip == .openPort2 ? "No driver needed." : "")")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {

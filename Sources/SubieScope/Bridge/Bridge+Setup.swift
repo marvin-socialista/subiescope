@@ -652,7 +652,8 @@ extension Bridge {
                 text = "Ready as \(portName(path))."
                 // On a PC the port is there because Windows has installed the driver.
                 if cable.chip == .ftdi && !onWindows { text += " No driver needed." }
-                if cable.chip == .openPort2 { text += " Experimental: not tested with a real OpenPort yet." }
+                // The cable ran on a real car on a Mac. On a PC it never has.
+                if cable.chip == .openPort2 { text += onWindows ? " Experimental: not tried on a PC yet." : " No driver needed." }
             } else {
                 text = cable.chip.driverAdvice
                 // With a port the driver is there, and what is missing is the setting the advice names.
