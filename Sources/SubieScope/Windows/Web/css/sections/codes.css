@@ -1,0 +1,34 @@
+/* What only Trouble Codes needs. Shared looks are in ../app.css. */
+
+.content.codes { padding: 0; }
+.codes-header { flex: none; display: flex; align-items: center; gap: 14px; padding: 8px 16px 14px 18px; }
+.btn .codes-chevron { width: 12px; height: 12px; margin-left: -1px; color: var(--text-2); }
+
+/* A status flag of the ECU, and the code itself: both a word on a wash of its own colour. */
+.codes-chip { padding: 2px 8px; border-radius: 999px; font-size: 11px; background: color-mix(in srgb, currentColor 15%, transparent); }
+.codes-badge { flex: none; padding: 3px 8px; border-radius: 6px; font: 600 13px/1.3 var(--font-mono); white-space: nowrap; background: color-mix(in srgb, currentColor 15%, transparent); }
+
+.codes-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 18px 18px; }
+.codes-section { display: flex; flex-direction: column; gap: 1px; padding: 14px 8px 6px; }
+.codes-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 5px 8px; border-radius: 6px; }
+/* A line between two rows. It makes way for the highlight of the row under the pointer. */
+.codes-row + .codes-row::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; background: var(--separator); }
+.codes-message { gap: 8px; }
+.codes-message:first-child { margin-top: 6px; }
+.codes-code:hover, .codes-code.open { background: var(--fill); }
+.codes-code:hover::before, .codes-code:hover + .codes-row::before, .codes-code.open::before, .codes-code.open + .codes-row::before { display: none; }
+.codes-code:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -2px; }
+.codes-info { display: flex; }
+
+/* The explanation that opens next to a code. */
+.codes-help { display: flex; flex-direction: column; gap: 16px; width: 460px; max-width: calc(100vw - 32px); max-height: 560px; overflow-y: auto; padding: 18px; }
+.codes-help-head { display: flex; align-items: baseline; gap: 10px; cursor: default; }
+.codes-help-head .btn { color: var(--text-2); }
+.codes-help-list { display: flex; flex-direction: column; gap: 6px; }
+.codes-help-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.codes-help-title .icon { width: 14px; height: 14px; }
+.codes-help-item { display: flex; align-items: baseline; gap: 8px; }
+.codes-help-mark { flex: none; width: 18px; text-align: right; }
+
+/* The question before clearing has a second paragraph. */
+.codes-question { display: block; white-space: pre-line; }

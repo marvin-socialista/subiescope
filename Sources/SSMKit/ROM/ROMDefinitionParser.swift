@@ -24,12 +24,10 @@ public enum ROMDefinitionParser {
 
     public static func load(data: Data) throws -> ROMDefinitionSet {
         let handler = Handler()
-        let parser = XMLParser(data: data)
-        parser.shouldResolveExternalEntities = false
-        parser.shouldProcessNamespaces = false
-        parser.delegate = handler
-        guard parser.parse() else {
-            throw LoadError.parse(parser.parserError?.localizedDescription ?? "unknown XML error")
+        do {
+            try XMLReader.parse(data, handler: handler)
+        } catch {
+            throw LoadError.parse(error.localizedDescription)
         }
         guard !handler.set.definitions.isEmpty else { throw LoadError.noDefinitions }
         return handler.set
@@ -69,7 +67,7 @@ public enum ROMDefinitionParser {
 
     // MARK: SAX handler
 
-    final class Handler: NSObject, XMLParserDelegate {
+    final class Handler: XMLEventHandler {
         var set = ROMDefinitionSet()
 
         private var currentDef: ROMDefinition?
@@ -82,8 +80,7 @@ public enum ROMDefinitionParser {
         private var staticValues: [Double] = []
         private var collectingStatic = false
 
-        func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
-                    qualifiedName: String?, attributes attrs: [String: String]) {
+        func startElement(_ name: String, attributes attrs: [String: String]) {
             switch name {
             case "rom":
                 currentDef = ROMDefinition(identity: ROMIdentity(xmlID: "", base: attrs["base"]))
@@ -135,11 +132,11 @@ public enum ROMDefinitionParser {
             }
         }
 
-        func parser(_ parser: XMLParser, foundCharacters string: String) {
+        func characters(_ string: String) {
             if capturing { text += string }
         }
 
-        func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+        func endElement(_ name: String) {
             let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
             switch name {
             case "rom":

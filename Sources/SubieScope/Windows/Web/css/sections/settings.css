@@ -1,0 +1,43 @@
+/* What only Settings needs: its sheet with tabs, the About tab, the "new version" sheet.
+   Shared looks are in ../app.css. */
+
+.settings-sheet { height: 540px; }
+
+/* The tabs across the top, as in a Mac's Settings window: an icon with its name under it. */
+.settings-header { position: relative; flex: none; display: flex; justify-content: center; padding: 10px 14px 9px; border-bottom: 1px solid var(--separator); }
+.settings-tabs { display: flex; gap: 4px; }
+.settings-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 78px; padding: 6px 10px 5px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 11px; }
+.settings-tab .icon { width: 22px; height: 22px; stroke-width: 1.6; }
+.settings-tab:hover { background: var(--fill); }
+.settings-tab.selected { background: var(--fill-2); color: var(--accent); font-weight: 500; }
+.settings-tab:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+.settings-done { position: absolute; right: 14px; top: 14px; }
+
+.settings-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 20px 20px; display: flex; flex-direction: column; }
+
+/* A tab's settings: one box of rows, the name on the left and the control on the right. */
+.settings-form { flex: none; }
+.settings-row { justify-content: space-between; gap: 16px; }
+.settings-label { flex: none; max-width: 100%; }
+.settings-value { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; text-align: right; }
+.settings-value .btn, .settings-value .select { flex: none; }
+.settings-value .select { max-width: 300px; }
+.group > .settings-note { min-height: 0; padding: 8px 12px 9px; font-size: 11px; color: var(--text-2); }
+.settings-path { display: flex; min-width: 0; white-space: nowrap; }
+.settings-path > :last-child { flex: none; }
+
+.settings-semibold { font-weight: 600; }
+.settings-app-icon { flex: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35)); }
+
+/* The About tab: everything in the middle, the small print at the bottom. */
+.settings-about { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 2px 4px 0; text-align: center; }
+.settings-about-text { max-width: 400px; }
+.settings-about-more { align-self: stretch; margin-top: 4px; text-align: left; }
+.settings-value a + a { margin-left: 6px; }
+
+/* "A new version is available". */
+.settings-update { display: flex; flex-direction: column; gap: 16px; padding: 22px; min-height: 0; }
+.settings-notes { max-height: 280px; overflow-y: auto; padding: 12px; border-radius: 8px; background: var(--fill); }
+.settings-notes-text { display: flex; flex-direction: column; gap: 8px; }
+.settings-bullet { display: flex; align-items: baseline; gap: 7px; }
+.settings-notes code { font-family: var(--font-mono); font-size: 12px; padding: 1px 4px; border-radius: 4px; background: var(--fill-2); }

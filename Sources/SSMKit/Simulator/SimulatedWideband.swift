@@ -52,7 +52,10 @@ public final class SimulatedWideband: @unchecked Sendable {
         }
         // The gauge does not care whether anyone listens: with nobody reading, readings are dropped
         // once the buffer is full instead of holding up the thread.
+        // (On Windows the stand-in for the pseudo terminal always works that way.)
+        #if !os(Windows)
         _ = fcntl(controller, F_SETFL, fcntl(controller, F_GETFL) | O_NONBLOCK)
+        #endif
         devicePath = String(cString: name)
         _output = output
         self.interval = interval
@@ -61,11 +64,11 @@ public final class SimulatedWideband: @unchecked Sendable {
         // ends are closed by the thread itself, never while it could still be writing to them.
         let thread = Thread { [weak self, interval] in
             while let bytes = self?.next() {
-                if !bytes.isEmpty { _ = bytes.withUnsafeBytes { write(controller, $0.baseAddress, $0.count) } }
+                if !bytes.isEmpty { _ = bytes.withUnsafeBytes { cserial_write(controller, $0.baseAddress, Int32($0.count)) } }
                 Thread.sleep(forTimeInterval: interval)
             }
-            close(controller)
-            close(device)
+            _ = cserial_release(controller)
+            _ = cserial_release(device)
         }
         thread.name = "SimulatedWideband"
         thread.start()

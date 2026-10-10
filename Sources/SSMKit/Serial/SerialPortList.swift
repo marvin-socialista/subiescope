@@ -1,10 +1,14 @@
 import Foundation
+#if canImport(IOKit)
 import IOKit
 import IOKit.serial
+#else
+import CSerial
+#endif
 
 public struct SerialPortInfo: Identifiable, Hashable, Sendable {
     public var id: String { path }
-    /// Callout device, e.g. /dev/cu.usbserial-A50285BI
+    /// Callout device, e.g. /dev/cu.usbserial-A50285BI. On Windows the port's name, e.g. COM4.
     public let path: String
     public let productName: String?
     public let vendorName: String?
@@ -51,6 +55,19 @@ public struct SerialPortInfo: Identifiable, Hashable, Sendable {
 }
 
 public enum SerialPortList {
+    /// How long the driver of an FTDI cable holds received bytes back before it hands them over, in
+    /// milliseconds. Windows only, where it is a setting of the driver (16 by default, and every answer
+    /// from the car waits that long); nil for other ports and on a Mac, where SubieScope sets it itself.
+    public static func driverLatency(ofPort path: String) -> Int? {
+        #if os(Windows)
+        let latency = cserial_ftdi_latency(path)
+        return latency >= 0 ? Int(latency) : nil
+        #else
+        return nil
+        #endif
+    }
+
+    #if canImport(IOKit)
     /// Lists serial callout devices, USB adapters first.
     public static func available(includeSystemPorts: Bool = false) -> [SerialPortInfo] {
         var ports: [SerialPortInfo] = []
@@ -105,5 +122,35 @@ public enum SerialPortList {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: "/dev")) ?? []
         return names.filter { $0.hasPrefix("cu.") }.sorted().map { SerialPortInfo(path: "/dev/\($0)") }
             .filter { includeSystemPorts || !$0.isSystemPort }
+    }    #else
+    /// Lists the COM ports, USB adapters first.
+    public static func available(includeSystemPorts: Bool = false) -> [SerialPortInfo] {
+        var ports: [SerialPortInfo] = []
+        for fields in WindowsDevices.lines(cserial_list_ports) where fields.count >= 6 {
+            let (name, friendly, maker, id, parent, product) = (fields[0], fields[1], fields[2], fields[3], fields[4], fields[5])
+            // The port Windows keeps for Bluetooth devices that call the PC themselves is never an adapter.
+            let incoming = id.uppercased().contains("LOCALMFG&0000")
+            if incoming && !includeSystemPorts { continue }
+            let usb = WindowsDevices.usbIdentity(id) ?? WindowsDevices.usbIdentity(parent)
+            var productName = product
+            if productName.isEmpty, let paired = WindowsDevices.bluetoothName(forPort: id) {
+                productName = "\(paired) (Bluetooth)"
+            }
+            if productName.isEmpty {
+                // "USB Serial Port (COM4)": the port's name is added again when it is shown.
+                productName = friendly.replacingOccurrences(of: " (\(name))", with: "")
+            }
+            ports.append(SerialPortInfo(
+                path: name,
+                productName: productName.isEmpty ? nil : productName,
+                vendorName: usb == nil || maker.isEmpty ? nil : maker,
+                vendorID: usb?.vendorID, productID: usb?.productID, serialNumber: usb?.serialNumber))
+        }
+        return ports.sorted { lhs, rhs in
+            if lhs.isFTDI != rhs.isFTDI { return lhs.isFTDI }
+            if lhs.isUSB != rhs.isUSB { return lhs.isUSB }
+            return lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
+        }
     }
+    #endif
 }

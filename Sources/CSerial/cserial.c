@@ -1,3 +1,5 @@
+#ifndef _WIN32
+
 #include "cserial.h"
 
 #include <errno.h>
@@ -135,6 +137,16 @@ int cserial_wait_readable(int fd, int timeout_ms)
 	}
 }
 
+int cserial_read(int fd, void *buffer, int count)
+{
+	return (int)read(fd, buffer, count);
+}
+
+int cserial_write(int fd, const void *buffer, int count)
+{
+	return (int)write(fd, buffer, count);
+}
+
 int cserial_drain(int fd)
 {
 	return tcdrain(fd);
@@ -158,3 +170,10 @@ int cserial_openpty(int *controller, int *device, char *name, int name_len)
 	name[name_len - 1] = 0;
 	return 0;
 }
+
+int cserial_release(int fd)
+{
+	return close(fd);
+}
+
+#endif

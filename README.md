@@ -231,11 +231,31 @@ How the code is organised:
 | Path | What's there |
 |---|---|
 | `Sources/SSMKit` | The engine, with no UI: serial port, SSM2 protocol, the Tactrix OpenPort, RomRaider definitions parser, polling and fast-poll session, CSV logs, the wideband gauge reader, troubleshooting tests, virtual dyno, and the simulated ECU |
-| `Sources/SubieScope` | The SwiftUI app |
+| `Sources/SubieScope` | The app: its model, the SwiftUI views for the Mac, and the window for Windows |
 | `Sources/SubieScopeCLI` | `subiescope-cli` |
 | `Tests/SSMKitTests` | Tests, including an end-to-end run over a pseudo-terminal and every troubleshooting test against simulated faults |
 
 RomRaider's definitions file has no explicit license, so it isn't in this repository. The app downloads it on first launch, and `scripts/fetch-definitions.sh` fetches it for development builds. Both check it against a checksum.
+
+### On Windows (experimental)
+
+The same code builds on Windows 10 and 11. The engine, the app's model and `subiescope-cli` are shared as they are. Windows has no SwiftUI, so there the window is a web page inside a native window (Microsoft's WebView2, which is part of Windows 11), in `Sources/SubieScope/Windows`, drawn from what `Sources/SubieScope/Bridge` tells it about the same model.
+
+You need [Swift 6.4 for Windows](https://www.swift.org/install/windows/) and the Visual Studio Build Tools with the C++ tools and a Windows SDK.
+
+```powershell
+git clone https://github.com/marvin-socialista/subiescope.git
+cd subiescope
+scripts\fetch-webview2.ps1                      # Microsoft's WebView2 SDK, which is not in this repository
+Copy-Item definitions\logger_METRIC_EN_v370.xml Sources\SSMKit\Resources\Definitions\   # for the tests and the demo car
+swift test                                      # the same tests as on a Mac
+scripts\build-windows.ps1 -KeepDefinitions      # builds build\SubieScope\SubieScope.exe and subiescope-cli.exe
+build\SubieScope\SubieScope.exe -selectedPort demo -autoConnect YES
+```
+
+The build script puts the Swift runtime next to the program, so the folder `build\SubieScope` runs on a PC without Swift. `-KeepDefinitions` is for development builds: it puts RomRaider's logger definitions inside, so the demo car works at once. Without it the app downloads them itself on first start, as the Mac app does.
+
+What is different on Windows for now: a cable or adapter is a COM port; Bluetooth LE adapters cannot be used yet (a Bluetooth adapter that is paired in Windows shows up as a COM port and works like a USB one); and none of it has been tried on a real cable or car yet, only against the built-in demo car.
 
 ## Credits
 
@@ -247,6 +267,7 @@ RomRaider's definitions file has no explicit license, so it isn't in this reposi
 - [FastECU](https://github.com/miikasyvanen/FastECU) by Miika Syvänen (GPLv3): the ROM editor's Subaru Denso checksum maths, where Subaru keeps its calibration ID and checksum tables, and the steps for reading a ROM from a Denso SH7058 ECU over CAN. Also how a Tactrix OpenPort is set up for a Subaru's K-line and CAN bus.
 - nisprog and npkern by [fenugrec](https://github.com/fenugrec), and the Subaru version by [rimwall](https://github.com/rimwall) (GPLv3): the helper program that copies the ROM out of the ECU. The bundled file `Sources/SSMKit/Resources/Kernels/ssmk_can_tp_sh7058.bin` is the one that ships with FastECU, unchanged.
 - [openport-j2534](https://github.com/bisak/openport-j2534) by Biser Atanasov (GPL-3.0-or-later): how a computer talks to a Tactrix OpenPort 2.0, measured on a real cable. SubieScope's OpenPort support is written from those notes.
+- In the Windows app's window: [Preact](https://preactjs.com) (MIT) and [htm](https://github.com/developit/htm) (Apache-2.0) draw the page, the icons are from [Lucide](https://lucide.dev) (ISC), and Microsoft's WebView2 shows it. The table that turns Windows' names for time zones into the usual ones is from [Unicode CLDR](https://cldr.unicode.org) (Unicode License).
 
 ## Support
 

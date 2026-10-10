@@ -23,3 +23,6 @@ CLAUDE.md
 
 # Logs and page snapshots from browser automation, kept local
 /.playwright-mcp/
+
+# Microsoft's WebView2 SDK for the Windows build; scripts/fetch-webview2.ps1 downloads it.
+/.webview2/

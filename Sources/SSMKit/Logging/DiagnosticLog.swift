@@ -1,8 +1,13 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import CSerial
+#endif
 import Foundation
 
 /// A log file that stays on the Mac until the user chooses to send it: what happened, when,
-/// and what went wrong. Written to ~/Library/Logs/SubieScope/. It never throws and never
+/// and what went wrong. Written to ~/Library/Logs/SubieScope/ (on Windows to
+/// %LOCALAPPDATA%\SubieScope\Logs). It never throws and never
 /// blocks the caller, so logging can not itself become the reason for a problem.
 public final class DiagnosticLog: @unchecked Sendable {
     public enum Level: String, Sendable { case debug = "DEBUG", info = "INFO", warning = "WARN", error = "ERROR" }
@@ -27,8 +32,31 @@ public final class DiagnosticLog: @unchecked Sendable {
     private var written = 0
 
     public init(directory: URL? = nil) {
-        self.directory = directory
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/SubieScope", isDirectory: true)
+        self.directory = directory ?? Self.defaultDirectory
+    }
+
+    static var defaultDirectory: URL {
+        // A test run can keep its log, and the marker of a run that was killed, away from the real ones.
+        if let folder = ProcessInfo.processInfo.environment["SUBIESCOPE_LOG_DIR"], !folder.isEmpty {
+            return URL(fileURLWithPath: folder, isDirectory: true)
+        }
+        #if os(Windows)
+        let local = ProcessInfo.processInfo.environment["LOCALAPPDATA"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("AppData/Local", isDirectory: true)
+        return local.appendingPathComponent("SubieScope/Logs", isDirectory: true)
+        #else
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/SubieScope", isDirectory: true)
+        #endif
+    }
+
+    private static var processID: Int32 { ProcessInfo.processInfo.processIdentifier }
+
+    private static func isRunning(_ pid: Int32) -> Bool {
+        #if os(Windows)
+        return cserial_process_alive(pid) == 1
+        #else
+        return kill(pid, 0) == 0
+        #endif
     }
 
     // MARK: Writing
@@ -74,7 +102,9 @@ public final class DiagnosticLog: @unchecked Sendable {
             let h = try FileHandle(forWritingTo: fileURL)
             written = Int((try? h.seekToEnd()) ?? 0)
             handle = h
+            #if canImport(Darwin)
             crashLogDescriptor = h.fileDescriptor
+            #endif
         } catch {
             enabled = false
         }
@@ -114,7 +144,11 @@ public final class DiagnosticLog: @unchecked Sendable {
     static func timestamp(_ date: Date) -> String {
         var t = time_t(date.timeIntervalSince1970)
         var parts = tm()
+        #if os(Windows)
+        localtime_s(&parts, &t)
+        #else
         localtime_r(&t, &parts)
+        #endif
         let ms = Int((date.timeIntervalSince1970 - floor(date.timeIntervalSince1970)) * 1000)
         return String(format: "%04d-%02d-%02d %02d:%02d:%02d.%03d", parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday,
                       parts.tm_hour, parts.tm_min, parts.tm_sec, ms)
@@ -130,7 +164,7 @@ public final class DiagnosticLog: @unchecked Sendable {
         queue.sync {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             previousSessionEndedUnexpectedly = Self.removeStaleMarkers(in: directory)
-            try? "\(getpid())\n".write(to: marker, atomically: true, encoding: .utf8)
+            try? "\(Self.processID)\n".write(to: marker, atomically: true, encoding: .utf8)
         }
         info("session", "SubieScope \(appVersion) (build \(build)) started")
         for line in Self.systemSummary() { info("system", line) }
@@ -147,7 +181,7 @@ public final class DiagnosticLog: @unchecked Sendable {
         try? FileManager.default.removeItem(at: marker)
     }
 
-    private var marker: URL { directory.appendingPathComponent("running-\(getpid()).marker") }
+    private var marker: URL { directory.appendingPathComponent("running-\(Self.processID).marker") }
 
     /// Markers left by processes that no longer exist belong to runs that never quit cleanly.
     static func removeStaleMarkers(in directory: URL) -> Bool {
@@ -155,7 +189,7 @@ public final class DiagnosticLog: @unchecked Sendable {
         var stale = false
         for name in files where name.hasPrefix("running-") && name.hasSuffix(".marker") {
             let pidText = name.dropFirst("running-".count).dropLast(".marker".count)
-            let alive = Int32(pidText).map { kill($0, 0) == 0 } ?? false
+            let alive = Int32(pidText).map { isRunning($0) } ?? false
             if !alive {
                 stale = true
                 try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
@@ -167,6 +201,19 @@ public final class DiagnosticLog: @unchecked Sendable {
     // MARK: System information
 
     public static func systemSummary() -> [String] {
+        #if os(Windows)
+        let environment = ProcessInfo.processInfo.environment
+        var lines = [ProcessInfo.processInfo.operatingSystemVersionString,
+                     "PC with \(environment["PROCESSOR_IDENTIFIER"] ?? "an unknown processor")"]
+        #if arch(arm64)
+        lines.append("Running as: arm64 (native)")
+        #else
+        lines.append("Running as: x86_64" + (environment["PROCESSOR_ARCHITEW6432"] == "ARM64" ? " (translated on an ARM PC)" : ""))
+        #endif
+        lines.append("Memory \(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) GB, \(ProcessInfo.processInfo.activeProcessorCount) cores")
+        lines.append("Locale \(Locale.current.identifier), time zone \(SystemTimeZone.zone.identifier)")
+        return lines
+        #else
         func sysctl(_ name: String) -> String? {
             var size = 0
             guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
@@ -187,8 +234,9 @@ public final class DiagnosticLog: @unchecked Sendable {
         lines.append("Running as: x86_64" + (sysctlInt("sysctl.proc_translated") == 1 ? " (translated by Rosetta)" : ""))
         #endif
         lines.append("Memory \(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) GB, \(ProcessInfo.processInfo.activeProcessorCount) cores")
-        lines.append("Locale \(Locale.current.identifier), time zone \(TimeZone.current.identifier)")
+        lines.append("Locale \(Locale.current.identifier), time zone \(SystemTimeZone.zone.identifier)")
         return lines
+        #endif
     }
 
     // MARK: Reading
@@ -213,6 +261,7 @@ public final class DiagnosticLog: @unchecked Sendable {
     static func installCrashHandlers() {
         guard !handlersInstalled else { return }
         handlersInstalled = true
+        #if canImport(Darwin)
         // ObjC exceptions (AppKit, Foundation): note the reason before the process dies.
         NSSetUncaughtExceptionHandler { exception in
             let stack = exception.callStackSymbols.prefix(25).joined(separator: "\n    ")
@@ -241,5 +290,8 @@ public final class DiagnosticLog: @unchecked Sendable {
                 raise(number)
             }
         }
+        #endif
+        // On Windows a crash leaves no trace of its own in the log: the next start still notices it,
+        // from the marker file that was not removed.
     }
 }

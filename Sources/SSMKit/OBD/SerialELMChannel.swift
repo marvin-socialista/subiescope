@@ -35,7 +35,7 @@ public final class SerialELMChannel: ELMChannel, @unchecked Sendable {
             } catch SerialError.configureFailed {
                 continue   // a speed this port cannot do
             } catch {
-                throw OBDError.adapterNotFound("\(error.localizedDescription). Is the adapter still plugged into your Mac, and is no other app using it?")
+                throw OBDError.adapterNotFound("\(error.localizedDescription). Is the adapter still plugged into your \(Platform.computer), and is no other app using it?")
             }
             // The port opens the way a KKL cable wants it, with RTS off. An adapter that looks at RTS
             // takes that as "do not send", so raise it, like terminal programs do.

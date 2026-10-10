@@ -1,0 +1,32 @@
+SubieScope for Windows
+https://github.com/marvin-socialista/subiescope
+
+SubieScope is free software under the GNU General Public License, version 3 (see LICENSE).
+It is not affiliated with Subaru Corporation.
+
+This folder also holds other people's work, each under its own license:
+
+Swift runtime and Foundation (the .dll files whose names start with swift, Foundation,
+dispatch and BlocksRuntime)
+  Copyright Apple Inc. and the Swift project authors. Apache License 2.0 with Runtime Library
+  Exception. https://www.swift.org
+
+ICU (inside _FoundationICU.dll)
+  Copyright Unicode, Inc. Unicode License V3. https://icu.unicode.org
+
+Microsoft Visual C++ runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll)
+  Copyright Microsoft Corporation. Distributed under the Visual Studio redistribution terms.
+
+Microsoft WebView2 loader (WebView2Loader.dll)
+  Copyright Microsoft Corporation. BSD-style license.
+  https://www.nuget.org/packages/Microsoft.Web.WebView2
+
+Preact and htm (in the window's page)
+  Preact: copyright Jason Miller, MIT License. https://preactjs.com
+  htm: copyright Google LLC, Apache License 2.0. https://github.com/developit/htm
+
+Lucide icons (in the window's page)
+  Copyright Lucide Contributors. ISC License. https://lucide.dev
+
+The protocol knowledge in SubieScope comes from FreeSSM (GPLv3), RomRaider (GPLv2), FastECU (GPLv3)
+and the openport-j2534 project (GPL-3.0-or-later). The time zone names come from Unicode CLDR.

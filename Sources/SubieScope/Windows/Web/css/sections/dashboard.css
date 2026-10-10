@@ -1,0 +1,27 @@
+/* What only the dashboard needs. Shared looks are in ../app.css. */
+
+.dashboard { display: flex; flex-direction: column; gap: 14px; }
+
+/* Tiles fill the first free cells, row by row; a wide tile takes two columns, a large one two rows as well. */
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); grid-auto-rows: 196px; grid-auto-flow: row dense; gap: 14px; }
+.tile { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; padding: 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--separator); }
+.tile.wide, .tile.large { grid-column: span 2; }
+.tile.large { grid-row: span 2; }
+.tile.dragging { opacity: 0.4; }
+.tile.target { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tile-name { font-size: 12px; font-weight: 500; color: var(--text-2); }
+.tile.large .tile-name { font-size: 16px; }
+.tile-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.tile-body.graph, .tile-body.bar, .tile-body.digital { justify-content: flex-start; }
+.tile-body.digital .value-text { flex: 1 1 auto; justify-content: center; }
+.tile-body.bar .linear-gauge { margin-top: auto; }
+.tile-body.graph .sparkline { flex: 1 1 auto; }
+.tile-scale, .tile-peaks { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tile-body.bar .tile-scale { margin-bottom: auto; }
+
+.tile-add { align-items: center; justify-content: center; gap: 8px; background: transparent; border: 1.5px dashed var(--fill-3); color: var(--text-2); font-size: 12px; }
+.tile-add:hover { background: var(--fill); }
+.tile-add .icon { width: 28px; height: 28px; stroke-width: 1.3; }
+
+.playback-bar { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: var(--fill); }
+.playback-bar input[type="range"] { flex: 1 1 180px; max-width: 320px; }

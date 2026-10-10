@@ -89,5 +89,14 @@ enum ModeGuide {
         Row(model: "Older Subarus and other brands", years: "2008 and newer", note: "Works, but Subarus up to 2014 do more with SSM"),
     ]
 
-    static let notSure = "Not sure? Cars up to about 2014 (older shape of the WRX and STI): pick Subaru SSM. Anything newer: pick OBD-II. Both connect to the same port under the dashboard, so you can switch any time in the Car menu."
+    /// Where the connection type can be changed later: the Mac has a menu bar, Windows has not.
+    private static var switchPlace: String {
+        #if os(Windows)
+        return "Settings"
+        #else
+        return "the Car menu"
+        #endif
+    }
+
+    static let notSure = "Not sure? Cars up to about 2014 (older shape of the WRX and STI): pick Subaru SSM. Anything newer: pick OBD-II. Both connect to the same port under the dashboard, so you can switch any time in \(switchPlace)."
 }

@@ -73,15 +73,34 @@ struct SubieScopeApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    #if DEBUG
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // A run that only serves the page must not put a window on the screen, not even for a moment.
+        if WebDevServer.isAskedFor { NSApp.setActivationPolicy(.prohibited) }
+    }
+    #endif
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // A bare executable (swift run) is not a real app bundle: make it behave like one.
+        #if DEBUG
+        // -webDev: this run only serves the Windows app's page (see WebDevServer), without a window.
+        if WebDevServer.isAskedFor {
+            WebDevServer.startIfAskedFor()
+            return
+        }
+        #endif
         if Bundle.main.bundleURL.pathExtension != "app" {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
         }
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        #if DEBUG
+        if WebDevServer.isAskedFor { return false }
+        #endif
+        return true
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         DiagnosticLog.shared.markCleanExit()

@@ -96,7 +96,7 @@ extension AppModel {
         case .silent: log("Wideband gauge: nothing readable arrives on its port")
         case .failed(let reason):
             // The serial errors talk about "the cable", which here is the gauge's adapter.
-            widebandState = .failed("The gauge's serial adapter can't be read: \(reason) Check that it is still plugged into your Mac.")
+            widebandState = .failed("The gauge's serial adapter can't be read: \(reason) Check that it is still plugged into your \(Desktop.computer).")
             log("Wideband gauge: \(reason)")
         }
     }

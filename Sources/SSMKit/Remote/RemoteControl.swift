@@ -1,4 +1,7 @@
+#if canImport(Darwin)
 import Darwin
+#endif
+import CSerial
 import Foundation
 
 /// Lets the command line tool (and so a person or an AI agent at a terminal) talk to a running
@@ -11,8 +14,15 @@ public enum RemoteControl {
     /// ~/Library/Application Support/SubieScope/control.sock, or a short /tmp path when the home
     /// folder path is too long for a socket (the limit is about 100 bytes).
     public static var defaultSocketPath: String {
+        #if os(Windows)
+        // %LOCALAPPDATA%\SubieScope\control.sock, or the temporary folder when that path is too long.
+        let local = ProcessInfo.processInfo.environment["LOCALAPPDATA"] ?? NSTemporaryDirectory()
+        let path = (local as NSString).appendingPathComponent("SubieScope\\control.sock")
+        return path.utf8.count <= 100 ? path : (NSTemporaryDirectory() as NSString).appendingPathComponent("subiescope-control.sock")
+        #else
         let base = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Application Support/SubieScope/control.sock"
         return base.utf8.count <= 100 ? base : "/tmp/subiescope-\(getuid()).sock"
+        #endif
     }
 }
 
@@ -59,7 +69,11 @@ public enum RemoteError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .notRunning(let path):
+            #if os(Windows)
+            return "SubieScope is not listening. Open SubieScope and turn on Settings > General > \"Let the command line tool control the app\" (or start it with: SubieScope.exe -remoteControl YES). Socket: \(path)"
+            #else
             return "SubieScope is not listening. Open SubieScope and turn on Settings > General > \"Let the command line tool control the app\" (or start it with: open -n SubieScope.app --args -remoteControl YES). Socket: \(path)"
+            #endif
         case .socket(let detail):
             return detail
         }
@@ -86,6 +100,10 @@ public final class RemoteServer: @unchecked Sendable {
         let directory = (path as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
+        #if os(Windows)
+        let fd = cserial_local_listen(path)
+        guard fd >= 0 else { throw RemoteError.socket("Could not create the control socket at \(path).") }
+        #else
         unlink(path)
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RemoteError.socket("Could not create the control socket: \(String(cString: strerror(errno)))") }
@@ -113,6 +131,7 @@ public final class RemoteServer: @unchecked Sendable {
             close(fd); unlink(path)
             throw RemoteError.socket("Could not listen on the control socket.")
         }
+        #endif
         listener = fd
         running = true
         let thread = Thread { [weak self] in self?.acceptLoop(fd) }
@@ -129,26 +148,35 @@ public final class RemoteServer: @unchecked Sendable {
         listener = -1
         lock.unlock()
         guard wasRunning else { return }
+        #if os(Windows)
+        _ = cserial_release(fd)
+        try? FileManager.default.removeItem(atPath: path)
+        #else
         shutdown(fd, SHUT_RDWR)
         close(fd)
         unlink(path)
+        #endif
         DiagnosticLog.shared.info("remote", "Control socket closed")
     }
 
     private func acceptLoop(_ fd: Int32) {
         while true {
+            #if os(Windows)
+            let client = cserial_accept(fd)
+            #else
             let client = accept(fd, nil, nil)
+            #endif
             if client < 0 { return }   // closed by stop()
             let handler = self.handler
             Thread.detachNewThread {
                 var line: [UInt8] = []
                 var byte: UInt8 = 0
-                while line.count < 8192, read(client, &byte, 1) == 1, byte != 10 { line.append(byte) }
+                while line.count < 8192, cserial_read(client, &byte, 1) == 1, byte != 10 { line.append(byte) }
                 let request = String(decoding: line, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
                 let reply = handler(request)
                 let out = reply.isEmpty ? ".\n" : (reply.joined(separator: "\n") + "\n.\n")
-                _ = out.withCString { write(client, $0, strlen($0)) }
-                close(client)
+                _ = out.withCString { cserial_write(client, $0, Int32(strlen($0))) }
+                _ = cserial_release(client)
             }
         }
     }
@@ -157,6 +185,12 @@ public final class RemoteServer: @unchecked Sendable {
 public enum RemoteClient {
     /// Sends one request and returns the reply lines.
     public static func send(_ line: String, path: String = RemoteControl.defaultSocketPath, timeout: TimeInterval = 30) throws -> [String] {
+        #if os(Windows)
+        let fd = cserial_local_connect(path)
+        guard fd >= 0 else { throw RemoteError.notRunning(path) }
+        defer { _ = cserial_release(fd) }
+        let deadline = Date().addingTimeInterval(timeout)
+        #else
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RemoteError.socket(String(cString: strerror(errno))) }
         defer { close(fd) }
@@ -174,12 +208,18 @@ public enum RemoteClient {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
         guard connected == 0 else { throw RemoteError.notRunning(path) }
+        #endif
         let request = line.replacingOccurrences(of: "\n", with: " ") + "\n"
-        _ = request.withCString { write(fd, $0, strlen($0)) }
+        _ = request.withCString { cserial_write(fd, $0, Int32(strlen($0))) }
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)
         while true {
-            let n = read(fd, &buffer, buffer.count)
+            #if os(Windows)
+            // No answer within the time: give up, as the read timeout does on a Mac.
+            let left = deadline.timeIntervalSinceNow
+            guard left > 0, cserial_wait_readable(fd, Int32(left * 1000)) > 0 else { break }
+            #endif
+            let n = Int(cserial_read(fd, &buffer, Int32(buffer.count)))
             if n <= 0 { break }
             data.append(contentsOf: buffer[0..<n])
         }

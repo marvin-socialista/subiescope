@@ -1,0 +1,11 @@
+/* What only ECU Info needs. Shared looks are in ../app.css. */
+
+/* Sections under each other, each a title over a box of rows: the Mac app's grouped form. */
+.ecuinfo { display: flex; flex-direction: column; gap: 20px; padding: 6px 2px 4px; }
+.ecuinfo-title { margin: 0 0 7px 10px; font-weight: 600; }
+.ecuinfo .group-row { align-items: flex-start; padding: 9px 12px; line-height: 18px; }
+.ecuinfo .group-row > .icon, .ecuinfo .group-row > .spinner { margin-top: 1px; }
+.ecuinfo .group-row > .btn { margin: -3px 0; }
+.ecuinfo .group-row > .toggle { margin: -1px 0; }
+.ecuinfo-label { flex: none; max-width: 50%; }
+.ecuinfo-value { flex: 1 1 0; min-width: 0; text-align: right; color: var(--text-2); overflow-wrap: anywhere; }

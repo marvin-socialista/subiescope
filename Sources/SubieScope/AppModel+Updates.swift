@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 import SSMKit
 
 /// Looks on GitHub for a newer release: once a day when the app opens, and from the SubieScope menu.
@@ -35,15 +35,20 @@ extension AppModel {
         guard release.isNewer(than: About.version) else {
             defaults.set(now, forKey: "lastUpdateCheck")
             if manual {
-                let alert = NSAlert()
-                alert.messageText = "SubieScope is up to date"
-                alert.informativeText = "You have version \(About.version ?? "?"). The newest release is \(release.version)."
-                alert.runModal()
+                Desktop.alert("SubieScope is up to date",
+                              "You have version \(About.version ?? "?"). The newest release is \(release.version).")
             }
             return
         }
         DiagnosticLog.shared.info("update", "SubieScope \(release.version) is available")
         if !manual {
+            #if os(Windows)
+            // A release without a Windows build is news for Mac users only.
+            if release.download == nil {
+                defaults.set(now, forKey: "lastUpdateCheck")
+                return
+            }
+            #endif
             if defaults.string(forKey: "skippedUpdate") == release.version {
                 defaults.set(now, forKey: "lastUpdateCheck")
                 return
@@ -56,17 +61,16 @@ extension AppModel {
     }
 
     private func updateCheckFailed(_ error: Error) {
-        let alert = NSAlert()
-        alert.messageText = "Could not check for updates"
-        alert.informativeText = "SubieScope could not ask GitHub for the newest version. Check the internet connection and try again, or look at the releases page yourself.\n\nWhat went wrong: \(error.localizedDescription)"
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Open Releases Page")
-        if alert.runModal() == .alertSecondButtonReturn { NSWorkspace.shared.open(Links.releases) }
+        let choice = Desktop.alert(
+            "Could not check for updates",
+            "SubieScope could not ask GitHub for the newest version. Check the internet connection and try again, or look at the releases page yourself.\n\nWhat went wrong: \(error.localizedDescription)",
+            buttons: ["OK", "Open Releases Page"])
+        if choice == 1 { Desktop.open(Links.releases) }
     }
 
     /// Hands the disk image to the browser. A release without one opens its page instead.
     func downloadUpdate(_ release: UpdateRelease) {
-        NSWorkspace.shared.open(release.download ?? release.page)
+        Desktop.open(release.download ?? release.page)
         updateOffer = nil
     }
 

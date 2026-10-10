@@ -71,9 +71,12 @@ struct DiagnosticLogTests {
         #expect(!DiagnosticLog.removeStaleMarkers(in: directory))
     }
 
-    @Test func keepsWorkingWhenTheFolderCannotBeWritten() {
+    @Test func keepsWorkingWhenTheFolderCannotBeWritten() throws {
         // A folder inside a file can never be created; logging must quietly do nothing, not crash.
-        let log = DiagnosticLog(directory: URL(fileURLWithPath: "/dev/null/nope"))
+        let file = tempDirectory()
+        try "not a folder".write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let log = DiagnosticLog(directory: file.appendingPathComponent("nope"))
         log.info("app", "this goes nowhere")
         log.flush()
         #expect(log.recentLines().isEmpty)
@@ -95,16 +98,17 @@ struct DiagnosticLogTests {
         let unpacked = tempDirectory()
         defer { try? FileManager.default.removeItem(at: unpacked) }
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
-        let unzip = Process()
-        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        unzip.arguments = ["-x", "-k", zip.path, unpacked.path]
-        try unzip.run(); unzip.waitUntilExit()
+        #expect(Platform.unzip(zip, into: unpacked))
         let root = try #require(try FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil).first)
         let report = try String(contentsOf: root.appendingPathComponent("report.txt"), encoding: .utf8)
         #expect(report.contains("Connection type: OBD-II"))
         #expect(report.contains("App version 9.9"))
         #expect(report.contains("something happened"))
+        #if os(Windows)
+        #expect(report.contains("Windows"))
+        #else
         #expect(report.contains("macOS"))
+        #endif
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("logs/subiescope.log").path))
         let crashCopy = try String(contentsOf: root.appendingPathComponent("crash-reports/SubieScope-2026-09-30.ips"), encoding: .utf8)
         #expect(!crashCopy.contains(NSHomeDirectory()))

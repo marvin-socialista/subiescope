@@ -1,4 +1,6 @@
+#if canImport(CoreBluetooth)
 import CoreBluetooth
+#endif
 import Foundation
 
 /// A Bluetooth LE device seen while scanning.
@@ -17,13 +19,53 @@ public enum BLEStatus: Equatable, Sendable {
     public var message: String? {
         switch self {
         case .idle, .scanning: return nil
+        #if os(Windows)
+        case .poweredOff: return "Bluetooth is turned off. Turn it on in Windows Settings > Bluetooth & devices."
+        case .unauthorized: return "SubieScope is not allowed to use Bluetooth. Allow it in Windows Settings > Privacy & security > Bluetooth."
+        case .unsupported: return BLEStatus.windowsText
+        #else
         case .poweredOff: return "Bluetooth is turned off. Turn it on in the menu bar or System Settings."
         case .unauthorized: return "SubieScope is not allowed to use Bluetooth. Allow it in System Settings > Privacy & Security > Bluetooth."
         case .unsupported: return "This Mac has no Bluetooth Low Energy."
+        #endif
         case .unavailable(let reason): return reason
         }
     }
 }
+
+#if !canImport(CoreBluetooth)
+
+extension BLEStatus {
+    /// Windows pairs these adapters itself and hands them to programs as a COM port.
+    static let windowsText = "SubieScope for Windows cannot talk to Bluetooth LE adapters yet. A Bluetooth adapter that you pair in Windows Settings > Bluetooth & devices shows up as a COM port: pick that port in the adapter list, under \"USB and Wi-Fi\". A Wi-Fi or USB adapter works too."
+}
+
+/// Bluetooth LE is not available in this build: scanning reports that, and finds nothing.
+public final class BLEScanner: @unchecked Sendable {
+    public var onChange: (@Sendable (BLEStatus, [BLEAdapter]) -> Void)?
+
+    public init() {}
+
+    public func start() {
+        onChange?(.unsupported, [])
+    }
+
+    public func stop() {}
+}
+
+public final class BLEChannel: ELMChannel, @unchecked Sendable {
+    public static func open(id: String, timeout: TimeInterval = 15) async throws -> BLEChannel {
+        throw OBDError.adapterNotFound(BLEStatus.windowsText)
+    }
+
+    public func exchange(_ command: String, timeout: TimeInterval) throws -> String {
+        throw OBDError.disconnected
+    }
+
+    public func close() {}
+}
+
+#else
 
 private func bluetoothUsageDescriptionMissing() -> Bool {
     Bundle.main.object(forInfoDictionaryKey: "NSBluetoothAlwaysUsageDescription") == nil
@@ -342,3 +384,5 @@ public final class BLEChannel: NSObject, ELMChannel, CBCentralManagerDelegate, C
         cond.unlock()
     }
 }
+
+#endif

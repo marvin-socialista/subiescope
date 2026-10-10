@@ -1,0 +1,89 @@
+/* What only the virtual dyno needs. Shared looks are in ../app.css. */
+
+/* The form on the left, a line, and what the log gave on the right. Each side scrolls by itself. */
+.content.fixed.dyno { flex-direction: row; padding: 0; }
+.dyno-form { width: 300px; flex: none; overflow-y: auto; padding: 20px 20px 20px; }
+.dyno-divider { width: 1px; flex: none; background: var(--separator); }
+.dyno-results { flex: 1 1 0; min-width: 0; overflow: auto; }
+
+/* MARK: The form */
+
+.dyno-section + .dyno-section { margin-top: 30px; }
+.dyno-heading { margin: 0 10px 10px; font-weight: 600; }
+/* A row and the line above it are 37 high together, as on the Mac. */
+.dyno-form .group-row { min-height: 37px; gap: 4px; padding: 0 10px; }
+.dyno-form .group-row.dyno-tall { min-height: 44px; }
+.dyno-form .group-row.dyno-help { padding: 10px; }
+
+/* A number of the car: it reads as plain text until it is clicked. */
+.dyno-number { height: 22px; padding: 0 3px; text-align: right; font-variant-numeric: tabular-nums; }
+.dyno-number:not(:focus) { background: transparent; box-shadow: none; }
+.dyno-number:not(:focus):hover { background: var(--fill); }
+.dyno-tyres { display: flex; align-items: center; gap: 2px; }
+
+/* The Mac's forms show a list as its choice with a small button next to it, and a button as coloured words. */
+.dyno-form .select { height: 22px; background: transparent; box-shadow: none; }
+.dyno-form .select select { padding: 0 24px 0 4px; text-align-last: right; }
+.dyno-form .select .icon { right: 0; width: 18px; height: 18px; padding: 2.5px; border-radius: 5px; background: var(--fill-2); color: var(--text); }
+.dyno-form .select:hover .icon { background: var(--fill-3); }
+.dyno-form .select.dyno-log select { padding-left: 14px; text-align-last: left; }
+.btn.dyno-form-button { height: 22px; color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); box-shadow: none; }
+.btn.dyno-form-button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* A switch is in the accent colour here, as in the Mac's form. */
+.dyno-form .toggle input:checked { background: var(--accent); }
+
+/* The list of cars to fill the fields in from: the years are headings that stay in sight. */
+.dyno-car-year { position: sticky; top: -4px; z-index: 1; padding: 10px 8px 4px; background: var(--sheet); font-size: 11px; font-weight: 600; color: var(--text-2); }
+
+/* MARK: What the log gave */
+
+.dyno-nothing { display: flex; flex-direction: column; gap: 16px; max-width: 720px; padding: 24px; }
+.dyno-found { display: flex; flex-direction: column; gap: 18px; padding: 20px; }
+
+/* An icon with words after it. The words wrap next to the icon, not under it. */
+.dyno-label { display: flex; align-items: flex-start; gap: 7px; }
+.dyno-label > .icon { margin-top: 1px; }
+.dyno-label.title3 > .icon { width: 18px; height: 18px; margin-top: 2px; }
+.dyno-label.callout > .icon { width: 14px; height: 14px; }
+
+.dyno-guide { padding: 14px; border-radius: 12px; background: color-mix(in srgb, var(--fill) 50%, transparent); }
+.dyno-guide-title { display: flex; align-items: center; gap: 4px; border-radius: 4px; outline-offset: 3px; }
+.dyno-guide-title:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.dyno-guide-title .icon { width: 13px; height: 13px; stroke-width: 2.4; color: var(--text-2); }
+.dyno-guide-body { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.dyno-step { display: flex; align-items: flex-start; gap: 10px; }
+.dyno-step-number { width: 20px; height: 20px; flex: none; margin-top: -2px; display: grid; place-items: center; border-radius: 50%; background: var(--fill-2); font-size: 11px; font-weight: 700; }
+.dyno-guide-record { margin-top: 4px; }
+
+.dyno-verdict { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; background: color-mix(in srgb, currentColor 10%, transparent); }
+
+.dyno-tiles { display: flex; align-items: center; gap: 12px; }
+.dyno-tile { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dyno-tile-value { display: flex; align-items: baseline; gap: 4px; }
+.dyno-tile-value .value-number { font-size: 34px; line-height: 1.2; }
+
+.dyno-runs { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.dyno-run { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; }
+.dyno-swatch { width: 14px; height: 3px; flex: none; border-radius: 1px; }
+.dyno-badge { padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.dyno-badge.green { color: var(--text); background: color-mix(in srgb, var(--green) 18%, transparent); }
+.dyno-badge.orange { color: var(--text); background: color-mix(in srgb, var(--orange) 18%, transparent); }
+.dyno-badge.red { color: var(--text); background: color-mix(in srgb, var(--red) 18%, transparent); }
+
+/* MARK: The charts (js/sections/dyno-chart.js). The greys and the blue of the rule are the Mac's own. */
+
+.dyno-chart { --dyno-grid: #3a3a3a; --dyno-rule: #0f588e; }
+@media (prefers-color-scheme: light) {
+  .dyno-chart { --dyno-grid: #d4d4d5; --dyno-rule: #7abefa; }
+}
+.dyno-chart-title { min-height: 18px; margin-bottom: 6px; }
+.dyno-readout { white-space: nowrap; }
+.dyno-chart-frame { position: relative; }
+.dyno-chart-frame svg { display: block; overflow: visible; }
+/* The page does not always put the chart on a whole pixel: these thin lines stay sharp anyway. */
+.dyno-chart-grid line, .dyno-chart-rule { shape-rendering: crispEdges; }
+.dyno-chart-grid line { stroke: var(--dyno-grid); stroke-width: 1; }
+.dyno-chart-grid.dashed line { stroke-dasharray: 3 3; }
+.dyno-chart-numbers text { fill: var(--text-2); font-size: 11px; }
+.dyno-chart-line { fill: none; stroke-width: 2; }
+.dyno-chart-rule { stroke: var(--dyno-rule); stroke-width: 1; stroke-dasharray: 3 3; }

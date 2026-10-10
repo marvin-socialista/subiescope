@@ -38,6 +38,14 @@ public final class SimulatedELMServer: @unchecked Sendable {
 
     /// A simulated Wi-Fi adapter on 127.0.0.1. Port 0 picks a free one: read it from `port`.
     public static func network(adapter: SimulatedELM = SimulatedELM(), port: UInt16 = 0) throws -> SimulatedELMServer {
+        #if os(Windows)
+        var bound: Int32 = 0
+        let listener = cserial_tcp_listen(Int32(port), &bound)
+        guard listener >= 0 else { throw SerialError.openFailed(path: "tcp port \(port)", reason: String(cString: strerror(errno))) }
+        let server = SimulatedELMServer(adapter: adapter, devicePath: nil, port: UInt16(bound), descriptors: [listener])
+        server.start { server.accept(on: listener) }
+        return server
+        #else
         let listener = socket(AF_INET, SOCK_STREAM, 0)
         guard listener >= 0 else { throw SerialError.openFailed(path: "tcp", reason: String(cString: strerror(errno))) }
         var yes: Int32 = 1
@@ -55,12 +63,13 @@ public final class SimulatedELMServer: @unchecked Sendable {
         }
         guard bound else {
             let reason = String(cString: strerror(errno))
-            Darwin.close(listener)
+            _ = cserial_release(listener)
             throw SerialError.openFailed(path: "tcp port \(port)", reason: reason)
         }
         let server = SimulatedELMServer(adapter: adapter, devicePath: nil, port: UInt16(bigEndian: address.sin_port), descriptors: [listener])
         server.start { server.accept(on: listener) }
         return server
+        #endif
     }
 
     private init(adapter: SimulatedELM, devicePath: String?, port: UInt16?, descriptors: [Int32]) {
@@ -80,7 +89,7 @@ public final class SimulatedELMServer: @unchecked Sendable {
         descriptors = []
         running = false
         lock.unlock()
-        open.forEach { Darwin.close($0) }
+        open.forEach { _ = cserial_release($0) }
     }
 
     private var isRunning: Bool {
@@ -98,12 +107,17 @@ public final class SimulatedELMServer: @unchecked Sendable {
     private func accept(on listener: Int32) {
         while isRunning {
             guard cserial_wait_readable(listener, 100) > 0 else { continue }
+            #if os(Windows)
+            let client = cserial_accept(listener)
+            guard client >= 0 else { continue }
+            #else
             let client = Darwin.accept(listener, nil, nil)
             guard client >= 0 else { continue }
             var yes: Int32 = 1
             setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout<Int32>.size))
+            #endif
             serve(client, untilHangUp: true)
-            Darwin.close(client)
+            _ = cserial_release(client)
         }
     }
 
@@ -114,7 +128,7 @@ public final class SimulatedELMServer: @unchecked Sendable {
         while isRunning {
             let ready = cserial_wait_readable(fd, 100)
             if ready == 0 { continue }
-            let count = ready > 0 ? chunk.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) } : -1
+            let count = ready > 0 ? chunk.withUnsafeMutableBytes { Int(cserial_read(fd, $0.baseAddress, Int32($0.count))) } : -1
             if count <= 0 {
                 if untilHangUp { return }
                 // A pseudo terminal: no client has the device open right now. Wait for one.
@@ -144,7 +158,7 @@ public final class SimulatedELMServer: @unchecked Sendable {
     private func write(_ bytes: [UInt8], to fd: Int32) {
         var offset = 0
         while offset < bytes.count {
-            let n = bytes[offset...].withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+            let n = bytes[offset...].withUnsafeBytes { Int(cserial_write(fd, $0.baseAddress, Int32($0.count))) }
             if n <= 0 { return }
             offset += n
         }

@@ -8,7 +8,7 @@ let usage = """
 usage: subiescope-cli <command> [options]
 
 commands:
-  ports                      List serial ports (the FTDI cable shows as cu.usbserial-…)
+  ports                      List serial ports (the FTDI cable shows as cu.usbserial-…, on Windows as COM3 or another number)
   probe                      Connect, show raw traffic and identify the ECU
   params                     List the parameters this ECU supports
   log                        Print live values (and optionally write a CSV)
@@ -24,7 +24,7 @@ commands:
   rom read <file> <defs.xml> "<map name>"   Print one map's values
 
 options:
-  --port PATH                Serial device (default: first FTDI/USB port)
+  --port PATH                Serial device, on Windows a COM port (default: first FTDI/USB port)
   --demo                     Use the built-in demo ECU instead of a cable
   --openport                 The port is a Tactrix OpenPort 2.0 (experimental; a real one is recognised
                              by itself). With --demo: put a simulated OpenPort in front of the demo ECU
@@ -37,6 +37,8 @@ options:
   --no-fast                  Disable fast poll (continuous mode)
   --tcp PORT                 demo --obd only: the port of the simulated Wi-Fi adapter (default 35000)
 """
+
+SystemTimeZone.apply()
 
 var args = Array(CommandLine.arguments.dropFirst())
 guard let command = args.first else {
@@ -288,6 +290,12 @@ case "demo" where flag("--obd"):
     usb.adapter.enableDemoExtended()
     wifi.adapter.enableDemoExtended()
     print("Simulated OBD-II adapter with a demo car. Ctrl-C to stop.")
+    #if os(Windows)
+    // Windows has no pseudo terminals: only the Wi-Fi adapter can be reached from another program.
+    print("  As a Wi-Fi adapter:  127.0.0.1:\(wifiPort)")
+    print("In SubieScope: type the Wi-Fi address in the connection panel, or start the app with")
+    print("  -connectionMode obd -selectedAdapter wifi:127.0.0.1:\(wifiPort)")
+    #else
     print("  As a USB adapter:    \(path)")
     print("  As a Wi-Fi adapter:  127.0.0.1:\(wifiPort)")
     print("  AEM wideband gauge:  \(gauge.devicePath)")
@@ -295,6 +303,7 @@ case "demo" where flag("--obd"):
     print("  -connectionMode obd -selectedAdapter usb:\(path)")
     print("and add the gauge with")
     print("  -widebandOn YES -widebandPort \(gauge.devicePath)")
+    #endif
     fflush(stdout)   // so the path shows up when the output goes to a file or a pipe
     withExtendedLifetime((usb, wifi, gauge)) { while true { Thread.sleep(forTimeInterval: 1) } }
 
@@ -408,6 +417,9 @@ case "rom":
 
 case "demo" where flag("--openport"):
     // Stands in for the Tactrix OpenPort nobody has on the desk, with the demo car on its K-line.
+    #if os(Windows)
+    fail("On Windows the simulated cable can only be reached from inside one program. Use: subiescope-cli probe --demo --openport, or the app with -selectedPort demo -demoCable openport")
+    #endif
     let defs = try? LoggerDefinitions.bundled()
     guard let demo = try? DemoECU.make(definitions: defs), let cable = try? SimulatedOpenPort(ecu: demo.ecu) else {
         fail("could not start the simulated OpenPort")
@@ -418,6 +430,9 @@ case "demo" where flag("--openport"):
     withExtendedLifetime((demo, cable)) { while true { Thread.sleep(forTimeInterval: 1) } }
 
 case "demo":
+    #if os(Windows)
+    fail("On Windows the demo ECU can only be reached from inside one program. Use --demo with probe, params, log or codes, or pick the demo car in the app. (demo --obd does work: it also listens on a network port.)")
+    #endif
     let defs = try? LoggerDefinitions.bundled()
     guard let demo = try? DemoECU.make(definitions: defs) else { fail("could not start demo ECU") }
     print("Demo ECU (JDM GRB STI) listening on \(demo.ecu.devicePath). Ctrl-C to stop.")

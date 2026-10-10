@@ -1,5 +1,7 @@
-import CryptoKit
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Where the RomRaider logger definitions live on this Mac, and how to get them.
 ///
@@ -39,7 +41,7 @@ public enum DefinitionsStore {
 
     static func verify(_ data: Data) -> Bool {
         let lf = Data(data.filter { $0 != 0x0D })
-        return SHA256.hash(data: lf).map { String(format: "%02x", $0) }.joined() == sha256LF
+        return Platform.sha256Hex(lf) == sha256LF
     }
 
     /// Downloads and installs the definitions. Returns the installed file.
@@ -62,7 +64,9 @@ public enum DefinitionsStore {
     /// romraider.com wants a browser user agent and a session cookie from any forum page.
     static func downloadFromForum() async throws -> Data {
         let config = URLSessionConfiguration.ephemeral
+        #if canImport(Darwin)
         config.httpCookieStorage = HTTPCookieStorage()
+        #endif
         config.httpAdditionalHeaders = ["User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"]
         let session = URLSession(configuration: config)
         _ = try await session.data(from: forumPage)
@@ -72,11 +76,7 @@ public enum DefinitionsStore {
         defer { try? FileManager.default.removeItem(at: temp) }
         let zipURL = temp.appendingPathComponent("defs.zip")
         try zip.write(to: zipURL)
-        let unzip = Process()
-        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        unzip.arguments = ["-x", "-k", zipURL.path, temp.path]
-        try unzip.run()
-        unzip.waitUntilExit()
+        _ = Platform.unzip(zipURL, into: temp)
         let enumerator = FileManager.default.enumerator(at: temp, includingPropertiesForKeys: nil)
         while let file = enumerator?.nextObject() as? URL {
             if file.lastPathComponent == fileName, let data = try? Data(contentsOf: file), verify(data) { return data }

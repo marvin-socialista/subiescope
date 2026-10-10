@@ -1,14 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum About {
-    static let coffeeURL = URL(string: "https://buymeacoffee.com/socialista")!
-
-    /// Nil when running from `swift run`, which has no Info.plist.
-    static var version: String? {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-    }
-
+extension About {
     /// The standard About panel, with the coffee link in its credits.
     static func showPanel() {
         let centered = NSMutableParagraphStyle()

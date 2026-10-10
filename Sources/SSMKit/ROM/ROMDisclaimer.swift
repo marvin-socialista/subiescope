@@ -11,7 +11,7 @@ public enum ROMDisclaimer {
     /// The full warning. Plain English, for a car owner, not an engineer.
     public static let full = """
     SubieScope works on a ROM: a copy of your ECU's tune. You can open a ROM file that is already on \
-    your Mac, or read the ROM from the car. Editing always happens in the copy on your Mac, so no \
+    your \(Platform.computer), or read the ROM from the car. Editing always happens in the copy on your \(Platform.computer), so no \
     edit you make here changes the car.
 
     Reading the ROM from the car is the one thing here that talks to the car. It loads a small \
@@ -33,5 +33,5 @@ public enum ROMDisclaimer {
     """
 
     /// The one fact that matters most, for a prominent callout.
-    public static let noWriteToCar = "SubieScope never writes to the car. Editing and saving only change a file on your Mac."
+    public static let noWriteToCar = "SubieScope never writes to the car. Editing and saving only change a file on your \(Platform.computer)."
 }

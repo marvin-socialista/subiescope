@@ -33,17 +33,22 @@ struct UpdateCheckTests {
     }
 
     @Test func readsTheLatestRelease() throws {
-        let release = try UpdateCheck.parse(Self.answer(tag: "v0.5.0"))
+        let release = try UpdateCheck.parse(Self.answer(tag: "v0.5.0"), windows: false)
         #expect(release.version == "0.5.0")
         #expect(release.page.absoluteString == "https://github.com/marvin-socialista/subiescope/releases/tag/v0.5.0")
         #expect(release.download?.absoluteString == "https://github.com/marvin-socialista/subiescope/releases/download/v0.5.0/SubieScope.dmg")
     }
 
     @Test func picksTheDiskImageAmongTheFiles() throws {
-        let release = try UpdateCheck.parse(Self.answer(tag: "v0.5.0", assets: ["checksums.txt", "SubieScope.dmg"]))
+        let release = try UpdateCheck.parse(Self.answer(tag: "v0.5.0", assets: ["checksums.txt", "SubieScope.dmg"]), windows: false)
         #expect(release.download?.lastPathComponent == "SubieScope.dmg")
         let bare = try UpdateCheck.parse(Self.answer(tag: "v0.5.0", assets: []))
         #expect(bare.download == nil)
+        // Each computer gets its own file, and never the other's.
+        let both = Self.answer(tag: "v0.7.0", assets: ["SubieScope.dmg", "SubieScope-0.7.0-windows-x64.zip"])
+        #expect(try UpdateCheck.parse(both, windows: true).download?.lastPathComponent == "SubieScope-0.7.0-windows-x64.zip")
+        #expect(try UpdateCheck.parse(both, windows: false).download?.lastPathComponent == "SubieScope.dmg")
+        #expect(try UpdateCheck.parse(Self.answer(tag: "v0.5.0", assets: ["SubieScope.dmg"]), windows: true).download == nil)
     }
 
     @Test func offersOnlyNewerReleases() throws {

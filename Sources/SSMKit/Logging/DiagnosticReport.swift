@@ -20,7 +20,7 @@ public enum DiagnosticReport {
         defer { try? fm.removeItem(at: work) }
 
         let home = NSHomeDirectory()
-        var text = ["SubieScope diagnostic report", "Created \(Date().formatted(date: .complete, time: .standard))",
+        var text = ["SubieScope diagnostic report", "Created \(SystemTimeZone.text(Date(), date: .complete, time: .standard))",
                     "App version \(appVersion)", "", "Connection"]
         text += context.map { "  \($0)" }
         text += ["", "System"] + DiagnosticLog.systemSummary().map { "  \($0)" }
@@ -53,12 +53,7 @@ public enum DiagnosticReport {
 
         let destination = fm.temporaryDirectory.appendingPathComponent("\(folderName).zip")
         try? fm.removeItem(at: destination)
-        let ditto = Process()
-        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        ditto.arguments = ["-c", "-k", "--keepParent", folder.path, destination.path]
-        try ditto.run()
-        ditto.waitUntilExit()
-        guard ditto.terminationStatus == 0 else {
+        guard Platform.zip(folder: folder, to: destination) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSLocalizedDescriptionKey: "Could not create the report file."])
         }
         return destination

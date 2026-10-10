@@ -75,8 +75,8 @@ public final class VirtualECU: @unchecked Sendable {
         running = false
         lock.unlock()
         guard wasRunning else { return }
-        close(controller)
-        if device >= 0 { close(device) }
+        _ = cserial_release(controller)
+        if device >= 0 { _ = cserial_release(device) }
         device = -1
     }
 
@@ -124,7 +124,7 @@ public final class VirtualECU: @unchecked Sendable {
                 }
                 continue
             }
-            let n = chunk.withUnsafeMutableBytes { read(controller, $0.baseAddress, $0.count) }
+            let n = chunk.withUnsafeMutableBytes { Int(cserial_read(controller, $0.baseAddress, Int32($0.count))) }
             if n <= 0 {
                 Thread.sleep(forTimeInterval: 0.02)
                 continue
@@ -149,7 +149,7 @@ public final class VirtualECU: @unchecked Sendable {
     private func writeAll(_ bytes: [UInt8]) {
         var offset = 0
         while offset < bytes.count {
-            let n = bytes[offset...].withUnsafeBytes { write(controller, $0.baseAddress, $0.count) }
+            let n = bytes[offset...].withUnsafeBytes { Int(cserial_write(controller, $0.baseAddress, Int32($0.count))) }
             if n <= 0 { return }
             offset += n
         }

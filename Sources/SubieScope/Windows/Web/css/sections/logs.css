@@ -1,0 +1,82 @@
+/* What only the recorded logs need: the list of files, and the viewer with its charts.
+   Shared looks are in ../app.css. */
+
+/* The list on the left, the open log on the right, with a line between them and no margin around. */
+.content.logs { flex-direction: row; padding: 0; }
+.logs-rule { width: 1px; flex: none; background: var(--separator); }
+
+/* In a window narrower than the Mac app's smallest, the list and the values give way to the charts. */
+.logs-list { flex: 0 1 290px; min-width: 150px; display: flex; flex-direction: column; min-height: 0; }
+.logs-files { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 6px 8px; outline: none; }
+.logs-files:focus-visible .logs-file.selected { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.logs-file { display: flex; flex-direction: column; gap: 2px; padding: 5px 10px; border-radius: 7px; }
+.logs-file:hover { background: var(--fill); }
+.logs-file.selected { background: var(--fill-2); }
+.logs-folder { word-break: break-all; }
+.logs-list-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; flex: none; }
+.logs-list-bar .btn.link:hover:not(:disabled), .logs-transport .btn.link:hover:not(:disabled) { text-decoration: none; filter: brightness(1.15); }
+
+.logs-main { flex: 1 0 351px; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.logs-main > .empty { flex: 1 1 auto; height: auto; }
+
+/* MARK: The viewer */
+
+.logs-viewer { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.logs-body { flex: 1 1 0; min-height: 0; display: flex; }
+.logs-charts { flex: 1 1 240px; min-width: 180px; min-height: 0; display: flex; flex-direction: column; }
+.logs-charts > .empty { flex: 1 1 0; height: auto; min-height: 0; }
+
+/* In a narrow window the last buttons of the bar go to a second line; the name of the file gives way first. */
+.logs-transport { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; flex: none; }
+.logs-transport .btn { flex: none; }
+/* The Mac's play, pause and step symbols are solid. */
+.logs-solid .icon { fill: currentColor; }
+.logs-transport .btn.prominent { min-width: 38px; }
+.logs-transport .btn.link { color: var(--accent); padding: 0 2px; }
+.logs-time { flex: 0 1 120px; min-width: max-content; white-space: nowrap; }
+.logs-speed .icon { width: 11px; height: 11px; color: var(--text-2); }
+.logs-which { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.logs-transport .logs-gauges { margin-left: auto; }
+.logs-which > * { max-width: 100%; }
+.logs-which .callout { font-weight: 500; }
+
+/* The charts share the height there is, and scroll once each would get less than 96 pixels. */
+.logs-stack-scroll { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; }
+.logs-stack { position: relative; flex: 1 0 auto; display: flex; flex-direction: column; }
+.logs-chart { flex: 1 0 96px; min-height: 96px; display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
+.logs-chart-head { display: flex; align-items: center; gap: 6px; height: 16px; flex: none; padding: 0 14px 0 60px; white-space: nowrap; }
+.logs-swatch { width: 14px; height: 3px; border-radius: 1px; flex: none; }
+.logs-chart-name { font-size: 11px; font-weight: 500; }
+.logs-chart-value { font-size: 12px; font-weight: 600; }
+.logs-plot { position: relative; flex: 1 1 0; min-height: 0; }
+.logs-plot canvas, .logs-overview canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.logs-dot-on-line { position: absolute; width: 6px; height: 6px; margin: -5px 0 0 -5px; border-radius: 50%; border: 2px solid var(--window); box-sizing: content-box; pointer-events: none; }
+
+.logs-axis { position: relative; height: 22px; flex: none; }
+.logs-axis span { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: 10px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Over the charts and the axis: the playhead, the pointer's line and its time, the stretch being dragged. */
+.logs-cursor-layer { position: absolute; inset: 0; overflow: hidden; touch-action: pan-y; }
+.logs-cursor-layer > * { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+.logs-playhead { position: absolute; top: 0; bottom: 0; width: 1.5px; margin-left: -0.75px; background: var(--text); opacity: 0.8; pointer-events: none; }
+.logs-hover-line { width: 1px; background: repeating-linear-gradient(to bottom, var(--text-2) 0 3px, transparent 3px 6px); }
+.logs-cursor-layer > .logs-hover-time { top: auto; bottom: 3px; padding: 2px 5px; border-radius: 4px; background: var(--raised); box-shadow: 0 0 0 0.5px var(--separator-strong); font-size: 10px; line-height: 13px; white-space: nowrap; }
+.logs-selection { background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+
+.logs-overview { position: relative; height: 58px; flex: none; overflow: hidden; touch-action: none; }
+.logs-overview canvas { opacity: 0.9; pointer-events: none; }
+.logs-window { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent); pointer-events: none; }
+
+/* MARK: The values at the pointer */
+
+.logs-snapshot { flex: 0 1 300px; min-width: 170px; display: flex; flex-direction: column; min-height: 0; }
+.logs-snapshot-head { display: flex; flex-direction: column; gap: 6px; padding: 12px; flex: none; }
+.logs-snapshot-time { font-weight: 600; }
+.logs-snapshot-list { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 6px 10px; }
+.logs-snapshot-row { display: flex; align-items: center; gap: 8px; height: 21px; padding: 0 8px; border-radius: 6px; }
+.logs-snapshot-row:hover { background: var(--fill); }
+.logs-mark { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.logs-mark.off { box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-2) 60%, transparent) inset; }
+.logs-snapshot-value { font-weight: 500; white-space: nowrap; }
+.logs-snapshot-units { width: 58px; flex: none; }
+.logs-snapshot-foot { padding: 8px; text-align: center; flex: none; }

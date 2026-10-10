@@ -1,6 +1,10 @@
 import Foundation
+#if canImport(IOKit)
 import IOKit
 import IOKit.usb
+#else
+import CSerial
+#endif
 
 /// A USB device that looks like a diagnostic cable, whether or not a driver has
 /// created a serial port for it.
@@ -49,8 +53,24 @@ public enum CableChip: Sendable, Hashable {
         }
     }
 
-    /// Plain-language driver situation on macOS.
+    /// Plain-language driver situation on this computer.
     public var driverAdvice: String {
+        #if os(Windows)
+        switch self {
+        case .ftdi:
+            return "Windows installs the driver for FTDI chips by itself, the first time the cable is plugged in. If no COM port shows up after a minute, install FTDI's VCP driver and plug the cable in again."
+        case .ch340:
+            return "Windows usually installs the CH340 driver by itself. If no COM port shows up, install WCH's driver. Note: CH340 cables are known to be unreliable with Subarus; an FTDI-based cable is recommended."
+        case .pl2303:
+            return "Prolific cables need Prolific's driver. Many cheap cables have a copy of the chip that the current driver refuses, and then no working COM port appears. An FTDI-based cable saves you that trouble."
+        case .cp210x:
+            return "Windows usually installs the driver for Silicon Labs chips by itself. If no COM port shows up, install the CP210x VCP driver from silabs.com."
+        case .openPort2:
+            return "The OpenPort 2.0 needs Tactrix's own driver on Windows (it comes with EcuFlash). SubieScope's support for it is new and experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings to use it. If there is a microSD card in the cable, take it out and plug the cable in again."
+        case .unknown:
+            return "SubieScope doesn't recognise this chip. KKL cables with an FTDI chip work best."
+        }
+        #else
         switch self {
         case .ftdi:
             return "macOS has a built-in driver for FTDI chips. Nothing to install. Don't install FTDI's own driver: it can conflict with Apple's."
@@ -65,15 +85,27 @@ public enum CableChip: Sendable, Hashable {
         case .unknown:
             return "SubieScope doesn't recognise this chip. KKL cables with an FTDI chip work best."
         }
+        #endif
     }
 
     public var driverURL: URL? {
+        #if os(Windows)
+        switch self {
+        case .ftdi: return URL(string: "https://ftdichip.com/drivers/vcp-drivers/")
+        case .ch340: return URL(string: "https://www.wch-ic.com/downloads/CH341SER_EXE.html")
+        case .pl2303: return URL(string: "https://www.prolific.com.tw/US/ShowProduct.aspx?p_id=225&pcid=41")
+        case .cp210x: return URL(string: "https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers")
+        case .openPort2: return URL(string: "https://www.tactrix.com/index.php?option=com_content&view=category&layout=blog&id=36&Itemid=58")
+        default: return nil
+        }
+        #else
         switch self {
         case .ch340: return URL(string: "https://www.wch-ic.com/downloads/CH34XSER_MAC_ZIP.html")
         case .pl2303: return URL(string: "https://apps.apple.com/app/pl2303-serial/id1624835354")
         case .cp210x: return URL(string: "https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers")
         default: return nil
         }
+        #endif
     }
 
     /// Chips that commonly show up in KKL / OBD cables.
@@ -84,6 +116,25 @@ public enum CableScanner {
     /// USB devices with a known cable chip, matched to their serial ports.
     public static func scan() -> [USBCable] {
         var cables: [USBCable] = []
+        #if os(Windows)
+        for fields in WindowsDevices.lines(cserial_list_usb_devices) where fields.count >= 5 {
+            let id = fields[0]
+            // The interfaces of a device with several ("&MI_00") would show the same cable twice.
+            guard id.uppercased().hasPrefix("USB\\VID_"), !id.uppercased().contains("&MI_"),
+                  let usb = WindowsDevices.usbIdentity(id) else { continue }
+            let chip = CableChip(vendorID: usb.vendorID, productID: usb.productID)
+            guard chip.isLikelyCable else { continue }
+            let cable = USBCable(
+                vendorID: usb.vendorID, productID: usb.productID,
+                productName: fields[3].isEmpty ? (fields[1].isEmpty ? nil : fields[1]) : fields[3],
+                vendorName: fields[2].isEmpty ? nil : fields[2],
+                serialNumber: usb.serialNumber,
+                // Stands in for the place on the bus: the same for the same plug, as far as Windows tells.
+                locationID: id.utf8.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1) } & 0x7FFF_FFFF,
+                serialPath: nil)
+            if !cables.contains(where: { $0.id == cable.id }) { cables.append(cable) }
+        }
+        #else
         for className in ["IOUSBHostDevice", "IOUSBDevice"] {
             guard let matching = IOServiceMatching(className) else { continue }
             var iterator: io_iterator_t = 0
@@ -107,6 +158,7 @@ public enum CableScanner {
                 if !cables.contains(where: { $0.id == cable.id }) { cables.append(cable) }
             }
         }
+        #endif
         let ports = SerialPortList.available()
         return cables.map { cable in
             var c = cable

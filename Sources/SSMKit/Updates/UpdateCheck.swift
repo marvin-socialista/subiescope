@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A version such as "0.4.0", or a release tag such as "v0.4.0", compared number by number.
 struct AppVersion: Comparable {
@@ -33,7 +36,8 @@ public struct UpdateRelease: Equatable, Identifiable, Sendable {
     public let notes: String
     /// The release page on GitHub.
     public let page: URL
-    /// The disk image to download, when the release has one.
+    /// The file to download for this computer, when the release has one: the disk image on a Mac,
+    /// the Windows build on a PC.
     public let download: URL?
 
     public var id: String { version }
@@ -106,8 +110,18 @@ public enum UpdateCheck {
         let assets: [Asset]?
     }
 
-    /// Reads GitHub's "latest release" answer.
-    static func parse(_ data: Data) throws -> UpdateRelease {
+    /// Whether a file of a release is the download for a Windows PC ("SubieScope-0.7.0-windows-x64.zip",
+    /// or an installer) or for a Mac (the .dmg).
+    static func isDownload(_ name: String, windows: Bool) -> Bool {
+        let name = name.lowercased()
+        if windows {
+            return name.contains("windows") && (name.hasSuffix(".zip") || name.hasSuffix(".exe") || name.hasSuffix(".msi"))
+        }
+        return name.hasSuffix(".dmg")
+    }
+
+    /// Reads GitHub's "latest release" answer. `windows` says which computer the download is for.
+    static func parse(_ data: Data, windows: Bool = Platform.isWindows) throws -> UpdateRelease {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         guard let payload = try? decoder.decode(Payload.self, from: data), AppVersion(payload.tagName) != nil else {
@@ -115,7 +129,7 @@ public enum UpdateCheck {
         }
         var version = payload.tagName.trimmingCharacters(in: .whitespaces)
         if version.first == "v" || version.first == "V" { version.removeFirst() }
-        let dmg = payload.assets?.first { $0.name.lowercased().hasSuffix(".dmg") }
-        return UpdateRelease(version: version, notes: payload.body ?? "", page: payload.htmlUrl, download: dmg?.browserDownloadUrl)
+        let download = payload.assets?.first { isDownload($0.name, windows: windows) }
+        return UpdateRelease(version: version, notes: payload.body ?? "", page: payload.htmlUrl, download: download?.browserDownloadUrl)
     }
 }

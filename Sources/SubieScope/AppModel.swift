@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import Observation
 import SSMKit
@@ -296,8 +295,8 @@ final class AppModel {
 
     init() {
         let info = Bundle.main.infoDictionary
-        DiagnosticLog.shared.startSession(appVersion: info?["CFBundleShortVersionString"] as? String ?? "dev",
-                                          build: info?["CFBundleVersion"] as? String ?? "0")
+        DiagnosticLog.shared.startSession(appVersion: About.version ?? "dev",
+                                          build: info?["CFBundleVersion"] as? String ?? Desktop.computer)
         // After a crash: no automatic connecting or Bluetooth scanning this once, in case that was the cause.
         let safeStart = DiagnosticLog.shared.previousSessionEndedUnexpectedly
         showCrashPrompt = safeStart

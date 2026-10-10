@@ -21,7 +21,7 @@ public enum SerialError: Error, LocalizedError, Equatable {
     }
 }
 
-/// Blocking POSIX serial port. Not thread safe: use it from one thread or queue.
+/// Blocking serial port (a POSIX device on a Mac, a COM port on Windows). Not thread safe: use it from one thread or queue.
 public final class SerialPort {
     public let path: String
     private var fd: Int32 = -1
@@ -86,7 +86,7 @@ public final class SerialPort {
         var offset = 0
         while offset < bytes.count {
             let n = bytes[offset...].withUnsafeBytes { buf in
-                Darwin.write(fd, buf.baseAddress, buf.count)
+                Int(cserial_write(fd, buf.baseAddress, Int32(buf.count)))
             }
             if n < 0 {
                 if errno == EINTR || errno == EAGAIN { continue }
@@ -114,7 +114,7 @@ public final class SerialPort {
             if ready == 0 { break }
             let want = count - result.count
             let n = buffer.withUnsafeMutableBytes { buf in
-                Darwin.read(fd, buf.baseAddress, want)
+                Int(cserial_read(fd, buf.baseAddress, Int32(want)))
             }
             if n < 0 {
                 if errno == EINTR || errno == EAGAIN { continue }
@@ -143,7 +143,7 @@ public final class SerialPort {
             if ready < 0 { throw SerialError.disconnected }
             if ready == 0 { break }
             let n = buffer.withUnsafeMutableBytes { buf in
-                Darwin.read(fd, buf.baseAddress, buf.count)
+                Int(cserial_read(fd, buf.baseAddress, Int32(buf.count)))
             }
             if n < 0 {
                 if errno == EINTR || errno == EAGAIN { continue }

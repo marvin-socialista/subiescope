@@ -1,5 +1,7 @@
-import CryptoKit
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Where the RomRaider ROM definitions (`ecu_defs.xml`) live on this Mac, and how to get them. Like
 /// the logger definitions, the file has no license of its own, so it is not part of the app bundle: it
@@ -34,7 +36,7 @@ public enum ROMDefinitionsStore {
 
     static func verify(_ data: Data) -> Bool {
         let lf = Data(data.filter { $0 != 0x0D })
-        return SHA256.hash(data: lf).map { String(format: "%02x", $0) }.joined() == sha256LF
+        return Platform.sha256Hex(lf) == sha256LF
     }
 
     /// Downloads and installs the definitions, returning the installed file.

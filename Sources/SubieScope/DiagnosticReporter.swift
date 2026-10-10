@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 import SSMKit
 
 /// Builds the diagnostic report (log, system info, crash reports) and gets it to the developer.
@@ -42,8 +42,12 @@ enum DiagnosticReporter {
     }
 
     private static func version() -> String {
+        #if os(Windows)
+        return About.version ?? "dev"
+        #else
         let info = Bundle.main.infoDictionary
         return "\(info?["CFBundleShortVersionString"] as? String ?? "dev") (build \(info?["CFBundleVersion"] as? String ?? "0"))"
+        #endif
     }
 
     private static func build(model: AppModel) -> URL? {
@@ -60,24 +64,17 @@ enum DiagnosticReporter {
         guard let url = build(model: model) else { return }
         let subject = "SubieScope \(version()) diagnostic report"
         let body = "Hi Marvin,\n\nHere is a diagnostic report from SubieScope. What happened (and what car and adapter or cable I use):\n\n\n"
-        if let service = NSSharingService(named: .composeEmail), service.canPerform(withItems: [body, url]) {
-            service.recipients = [Links.supportEmail]
-            service.subject = subject
-            service.perform(withItems: [body, url])
-        } else {
+        if !Desktop.composeEmail(to: Links.supportEmail, subject: subject, body: body, attachment: url) {
             // No mail app set up: leave the file where it can be found and say what to do with it.
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+            Desktop.reveal(url)
             alert("The report is ready",
-                  "No email app is set up on this Mac, so the report is shown in Finder. Please email it to \(Links.supportEmail), or attach it to a report on GitHub.")
+                  "\(Desktop.noMailApp), so the report is shown in \(Desktop.fileBrowser). Please email it to \(Links.supportEmail), or attach it to a report on GitHub.")
         }
     }
 
     static func save(model: AppModel) {
         guard let url = build(model: model) else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = url.lastPathComponent
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        guard let destination = Desktop.chooseSaveLocation(suggestedName: url.lastPathComponent) else { return }
         do {
             try? FileManager.default.removeItem(at: destination)
             try FileManager.default.copyItem(at: url, to: destination)
@@ -90,16 +87,13 @@ enum DiagnosticReporter {
         let log = DiagnosticLog.shared
         log.flush()
         if FileManager.default.fileExists(atPath: log.fileURL.path) {
-            NSWorkspace.shared.activateFileViewerSelecting([log.fileURL])
+            Desktop.reveal(log.fileURL)
         } else {
-            NSWorkspace.shared.open(log.directory)
+            Desktop.open(log.directory)
         }
     }
 
     private static func alert(_ title: String, _ detail: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = detail
-        alert.runModal()
+        Desktop.alert(title, detail)
     }
 }

@@ -48,12 +48,10 @@ public final class LoggerDefinitions: @unchecked Sendable {
     public static func load(url: URL) throws -> LoggerDefinitions {
         let data = try Data(contentsOf: url)
         let handler = DefinitionsParser(sourceURL: url)
-        let parser = XMLParser(data: data)
-        parser.shouldResolveExternalEntities = false
-        parser.shouldProcessNamespaces = false
-        parser.delegate = handler
-        guard parser.parse() else {
-            throw LoadError.parse(parser.parserError?.localizedDescription ?? "unknown XML error")
+        do {
+            try XMLReader.parse(data, handler: handler)
+        } catch {
+            throw LoadError.parse(error.localizedDescription)
         }
         guard handler.sawSSM else { throw LoadError.noSSMProtocol }
         return handler.result()
@@ -105,7 +103,7 @@ public final class LoggerDefinitions: @unchecked Sendable {
     }
 }
 
-private final class DefinitionsParser: NSObject, XMLParserDelegate {
+private final class DefinitionsParser: XMLEventHandler {
     let sourceURL: URL
     var version: String?
     var sawSSM = false
@@ -142,8 +140,7 @@ private final class DefinitionsParser: NSObject, XMLParserDelegate {
         return UInt32(s, radix: 16)
     }
 
-    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
-                qualifiedName: String?, attributes a: [String: String] = [:]) {
+    func startElement(_ name: String, attributes a: [String: String]) {
         if name == "logger" { version = a["version"] }
         if name == "protocol" {
             inSSM = a["id"] == "SSM"
@@ -225,11 +222,11 @@ private final class DefinitionsParser: NSObject, XMLParserDelegate {
         }
     }
 
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
+    func characters(_ string: String) {
         if collectingAddress { text += string }
     }
 
-    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+    func endElement(_ name: String) {
         if name == "protocol" {
             inSSM = false
             return
