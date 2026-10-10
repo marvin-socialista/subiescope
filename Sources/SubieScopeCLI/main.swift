@@ -402,7 +402,7 @@ case "rom":
             let editable = tables.filter { $0.isEditable }
             print("\(args[2]): \(tables.count) tables, \(editable.count) editable")
             for t in editable.prefix(12) {
-                let dims = t.dimension == .threeD ? "\(t.sizeX)x\(t.sizeY)" : (t.dimension == .twoD ? "\(t.sizeX)" : "1")
+                let dims = t.dimension == .threeD ? "\(t.sizeX)x\(t.sizeY)" : "\(t.gridSize.columns)"
                 print("  [\(t.category)] \(t.name) (\(dims)) @0x\(String(t.address ?? 0, radix: 16))")
             }
         } else {
@@ -421,7 +421,7 @@ case "rom":
         for t in tables {
             let category = t.category.isEmpty ? "Other" : t.category
             if category != lastCategory { print("  [\(category)]"); lastCategory = category }
-            let dims = t.dimension == .threeD ? "\(t.sizeX)x\(t.sizeY)" : (t.dimension == .twoD ? "\(t.sizeX)" : "1")
+            let dims = t.dimension == .threeD ? "\(t.sizeX)x\(t.sizeY)" : "\(t.gridSize.columns)"
             print("    \(t.name)  (\(dims))")
         }
     } else if sub == "read" {

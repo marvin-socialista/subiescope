@@ -61,8 +61,28 @@ public enum ROMDefinitionParser {
             toByte: attrs["to_byte"] ?? "x",
             format: attrs["format"] ?? "0.00",
             min: attrs["min"].flatMap(Double.init) ?? attrs["minvalue"].flatMap(Double.init),
-            max: attrs["max"].flatMap(Double.init) ?? attrs["maxvalue"].flatMap(Double.init))
+            max: attrs["max"].flatMap(Double.init) ?? attrs["maxvalue"].flatMap(Double.init),
+            fineIncrement: increment(attrs["fineincrement"]),
+            coarseIncrement: increment(attrs["coarseincrement"]))
         return (scaling, name)
+    }
+
+    /// Bytes as RomRaider writes a switch's: "04 00 11". Nil when there are none, or when one of
+    /// them is no hex byte.
+    static func hexBytes(_ text: String?) -> [UInt8]? {
+        guard let parts = text?.split(whereSeparator: { $0.isWhitespace }), !parts.isEmpty else { return nil }
+        var bytes: [UInt8] = []
+        for part in parts {
+            guard part.count <= 2, let byte = UInt8(part, radix: 16) else { return nil }
+            bytes.append(byte)
+        }
+        return bytes
+    }
+
+    /// A step size as RomRaider writes it: ".08", "1", "50".
+    static func increment(_ text: String?) -> Double? {
+        guard let text, let value = Double(text.trimmingCharacters(in: .whitespaces)), value.isFinite else { return nil }
+        return value
     }
 
     // MARK: SAX handler
@@ -126,6 +146,12 @@ public enum ROMDefinitionParser {
                     else { tableStack[tableStack.count - 1].scalingName = reference }
                 } else if let scaling, let n = scaling.name {
                     set.scalings[n] = scaling   // shared, top-level
+                }
+            case "state":
+                // A position of a switch: <state name="on" data="04 00 11"/>. An axis has none.
+                if axisStack.isEmpty, !tableStack.isEmpty, let name = attrs["name"],
+                   let data = ROMDefinitionParser.hexBytes(attrs["data"]) {
+                    tableStack[tableStack.count - 1].states.append(ROMSwitchState(name: name, data: data))
                 }
             case "data" where collectingStatic:
                 text = ""; capturing = true

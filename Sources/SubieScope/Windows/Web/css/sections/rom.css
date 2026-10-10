@@ -1,52 +1,337 @@
-/* What only the ROM editor needs. Shared looks are in ../app.css. */
+/* What only the ROM editor needs. Shared looks are in ../app.css.
+   The editor is laid out as the Mac's is (Views/ROMView.swift and the files next to it), with the
+   colours of Views/ROMStyle.swift: the dark ones are the design's, and each has a light one beside
+   it. The colours of the cells themselves (the rings around a changed cell, the fills of a
+   Difference view) are the same in both looks, with near-black numbers. The heat scale's colours
+   come from the app, cell by cell. */
 
-/* A column of cards, no wider than is comfortable to read. */
-.rom { display: flex; flex-direction: column; gap: 16px; max-width: 784px; padding: 2px 0; }
-.rom-card { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; }
-.rom-card > .row { flex-wrap: wrap; }
+.rom-editor {
+  /* What stands on a surface, as red, green and blue: white in the dark look. */
+  --rom-ink: 255, 255, 255;
+  /* The surfaces, from the back to the front. */
+  --rom-workspace: #161617;
+  --rom-panel: #232324;
+  --rom-window: #2a2a2b;
+  --rom-titlebar: #333335;
+  --rom-axis: #3a3a3c;
+  --rom-field: #1a1a1b;
+  --rom-inset: #1e1e1f;
+  --rom-backdrop: #1b1b1c;
+  /* A cell of a Difference view that is the same as it was. */
+  --rom-plain: #2c2c2e;
+  --rom-plain-text: #8d8d93;
+  --rom-hairline: rgba(var(--rom-ink), 0.095);
+  /* The accents. */
+  --rom-orange: #ff9f0a;
+  --rom-orange-text: #ffb340;
+  --rom-purple: #c98bf5;
+  --rom-purple-text: #d9aaf8;
+  --rom-purple-bar: #2b2140;
+  --rom-ok: #5fd97a;
+  --rom-raised-arrow: #ff9f6b;
+  --rom-lowered-arrow: #6ea2ff;
+  --rom-axis-title-3d: #ff7a6e;
+  --rom-selection: #5499ff;
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--separator);
+}
+
+@media (prefers-color-scheme: light) {
+  .rom-editor {
+    --rom-ink: 0, 0, 0;
+    --rom-workspace: #e3e3e7;
+    --rom-panel: #f4f4f6;
+    --rom-window: #ffffff;
+    --rom-titlebar: #ececef;
+    --rom-axis: #d8d8de;
+    --rom-field: #ffffff;
+    --rom-inset: #efeff2;
+    --rom-backdrop: #ededf1;
+    --rom-plain: #e9e9ed;
+    --rom-plain-text: #77777d;
+    --rom-orange-text: #a35a00;
+    --rom-purple-text: #6b21a8;
+    --rom-purple-bar: #efe5fb;
+    --rom-ok: #1a8f3a;
+    --rom-raised-arrow: #d9541e;
+    --rom-lowered-arrow: #2f6fd6;
+    --rom-axis-title-3d: #c0392b;
+  }
+}
+
+/* The tree, the workspace and the Changes panel. In a window too narrow for all three they keep their widths and scroll sideways. */
+.rom-main { flex: 1 1 auto; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden; }
+.rom-bold { font-weight: 700; }
+.rom-wide { align-self: stretch; }
+.rom-orange-text { color: var(--rom-orange-text); }
+.rom-purple-text { color: var(--rom-purple-text); }
+.rom-ok { color: var(--rom-ok); }
+.rom-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--rom-orange); }
 
 /* An icon with a sentence next to it. The icon stays with the first line. */
 .rom-label { display: flex; align-items: flex-start; gap: 6px; }
-.rom-label > .icon { margin-top: 0.1em; width: 1.2em; height: 1.2em; }
-.rom-subheadline { font-size: 12px; font-weight: 500; }
+.rom-label > .icon, .rom-label > .spinner { margin-top: 0.1em; width: 1.2em; height: 1.2em; }
 .rom-paragraphs { white-space: pre-line; }
-
-/* The warning at the top, and what is behind its arrow. */
-.rom-warning { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: color-mix(in srgb, var(--orange) 10%, transparent); border: 1px solid color-mix(in srgb, var(--orange) 35%, transparent); }
 .rom-disclosure { display: flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; text-align: left; }
 .rom-disclosure .icon { width: 14px; height: 14px; color: var(--accent); stroke-width: 2.4; }
 .rom-disclosure:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; border-radius: 4px; }
 
-/* No ROM yet, and Advanced mode off. */
-.rom-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; text-align: center; }
+/* MARK: The editor's own controls (js/sections/rom-ui.js) */
+
+/* A flat, rounded tile. Its height and the room beside its words are set where it is used. */
+.rom-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none; border: 0; background: rgba(var(--rom-ink), 0.068); color: var(--text); font-size: 13px; white-space: nowrap; }
+.rom-btn.quiet { background: rgba(var(--rom-ink), 0.11); }
+.rom-btn.filled { background: var(--tint); color: #fff; font-weight: 600; }
+.rom-btn.fine { --tint: #2f6fd6; }
+.rom-btn.coarse { --tint: #c96a00; }
+.rom-btn.primary { --tint: #3d86f5; }
+.rom-btn.purple { --tint: #6b3fa0; }
+.rom-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.rom-btn:active:not(:disabled) { opacity: 0.7; }
+.rom-btn:disabled { opacity: 0.4; }
+.rom-btn:focus-visible, .rom-segments button:focus-visible, .rom-close:focus-visible, .rom-file:focus-visible, .rom-category:focus-visible, .rom-tree-map:focus-visible, .rom-change-lines button:focus-visible, .rom-change-title:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+.rom-btn .icon { width: 15px; height: 15px; }
+.rom-btn.filled .icon { width: 13px; height: 13px; stroke-width: 2.6; }
+
+.rom-segments { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: 7px; background: rgba(var(--rom-ink), 0.077); }
+.rom-segments button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; font-size: 12px; white-space: nowrap; }
+.rom-segments button.selected { background: rgba(var(--rom-ink), 0.187); font-weight: 600; }
+.rom-segments.fills { display: flex; }
+.rom-segments.fills button { flex: 1 1 0; }
+
+.rom-badge { display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px; background: #ff9f0a; color: #241300; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.rom-badge.compare { background: #c98bf5; color: #22073a; }
+
+.rom-field { height: 28px; min-width: 0; padding: 0 8px; border: 1px solid rgba(var(--rom-ink), 0.136); border-radius: 7px; background: var(--rom-field); font: 12px var(--font-mono); outline: none; user-select: text; }
+.rom-field.small { height: 26px; border-radius: 6px; }
+.rom-field:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.rom-field:disabled { opacity: 0.4; }
+
+.rom-close { display: flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-2); }
+.rom-close:hover { background: rgba(var(--rom-ink), 0.1); }
+.rom-close .icon { width: 12px; height: 12px; stroke-width: 2.8; }
+
+/* What the selected cell holds: now, and as it was opened or in the other ROM. */
+.rom-numbers { display: inline-flex; gap: 18px; }
+.rom-numbers b { font: 700 12px var(--font-mono); }
+.rom-numbers .opened { color: var(--rom-orange-text); }
+.rom-numbers .other { color: var(--rom-purple-text); }
+
+/* MARK: The toolbar, the bar while another ROM is compared, and the status bar */
+
+.rom-toolbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 9px 14px; background: var(--rom-panel); border-bottom: 1px solid var(--separator); }
+/* The row is the tools' but for the checksums' corner. Tools that do not fit start a new row, and
+   in a narrow window the checksums go under them. */
+.rom-toolbar-flow { flex: 1 1 420px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.rom-tool-group { display: flex; align-items: center; gap: 6px; }
+.rom-tool-group.undo { gap: 4px; }
+.rom-tool-group.steps { gap: 5px; }
+.rom-tool-label { font-size: 12px; color: var(--text-2); }
+.rom-tool-separator { width: 1px; height: 22px; background: rgba(var(--rom-ink), 0.136); }
+.rom-checksums { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; }
+.rom-checksums .rom-label { align-items: center; }
+.rom-checksums .rom-label > .icon { margin-top: 0; }
+
+.rom-compare-bar { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 8px 14px; background: var(--rom-purple-bar); border-bottom: 1px solid var(--separator); font-size: 12px; }
+.rom-compare-names { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.rom-compare-names b { font-weight: 700; }
+
+.rom-status { flex: none; display: flex; align-items: center; gap: 18px; min-height: 32px; padding: 6px 14px; overflow: hidden; background: var(--rom-panel); border-top: 1px solid var(--separator); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+/* Where the line is too short for all of it, what happened last gives way first, then the
+   definitions and the size. The steps between them are large, so that the ones whose turn it is
+   not lose no part of a pixel, which would already cost them their last letters. */
+.rom-status > * { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rom-status > .rom-last { flex-shrink: 10000000; }
+.rom-status > .rom-last.problem { color: var(--rom-orange-text); }
+.rom-status > .spacer { flex: 1 1 8px; min-width: 8px; }
+.rom-status > .rom-btn { flex: none; font-size: 12px; }
+.rom-summary { display: flex; align-items: center; gap: 6px; flex-shrink: 1; }
+.rom-summary.changed { color: var(--rom-orange-text); }
+.rom-summary.compared { color: var(--rom-purple-text); }
+.rom-summary.compared .rom-dot { background: var(--rom-purple); }
+
+/* MARK: The tree */
+
+.rom-tree { width: 290px; flex: none; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px; background: var(--rom-panel); border-right: 1px solid var(--separator); }
+/* The ROM itself. Orange while it is not saved, blue while its overview is on show. */
+.rom-file { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 10px; border: 1px solid rgba(var(--rom-ink), 0.119); border-radius: 8px; background: rgba(var(--rom-ink), 0.051); text-align: left; overflow-wrap: anywhere; }
+.rom-file.unsaved { border-color: rgba(255, 159, 10, 0.4); background: rgba(255, 159, 10, 0.14); }
+.rom-file.selected { border-color: var(--rom-selection); background: rgba(84, 153, 255, 0.22); }
+.rom-file-saved { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
+.rom-file-saved.unsaved { color: var(--rom-orange-text); }
+
+.rom-filter { flex: none; display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border: 1px solid var(--rom-hairline); border-radius: 7px; background: var(--rom-field); }
+.rom-filter:focus-within { border-color: var(--accent); }
+.rom-filter .icon { width: 13px; height: 13px; color: var(--text-2); }
+.rom-filter input { flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: transparent; outline: none; user-select: text; }
+.rom-filter button { display: flex; padding: 0; border: 0; background: transparent; }
+
+.rom-tree-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.rom-category, .rom-tree-map { display: flex; align-items: center; border: 0; background: transparent; text-align: left; }
+.rom-category { gap: 6px; width: 100%; height: 23px; padding: 0 6px; border-radius: 5px; }
+.rom-category:hover, .rom-tree-map:hover { background: rgba(var(--rom-ink), 0.04); }
+.rom-chevron { width: 11px; height: 11px; color: var(--text-2); stroke-width: 3; transition: transform 0.12s; }
+.rom-category.expanded .rom-chevron { transform: rotate(90deg); }
+.rom-folder { width: 13px; height: 13px; color: #e0a83a; fill: currentColor; }
+.rom-count { font-size: 11px; color: var(--text-2); }
+.rom-tree-map { gap: 7px; width: calc(100% - 20px); height: 24px; margin-left: 20px; padding: 0 6px; border-radius: 5px; }
+.rom-tree-map.open { background: rgba(var(--rom-ink), 0.06); font-weight: 600; }
+.rom-tree-map.selected { background: rgba(84, 153, 255, 0.3); }
+/* "1D", "2D", "3D" or "SW": what kind of map it is. */
+.rom-chip { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 15px; border-radius: 3px; background: #e58a1f; color: #1a1205; font: 700 9.5px var(--font-mono); }
+.rom-note { flex: none; padding: 9px 10px; border-radius: 8px; background: var(--rom-inset); font-size: 12px; color: var(--text-2); }
+
+/* MARK: The workspace and a map's window (js/sections/rom-map.js) */
+
+.rom-workspace { flex: 1 1 auto; min-width: 320px; display: flex; background: var(--rom-workspace); outline: none; }
+.rom-workspace.beside-changes { min-width: 602px; }
+.rom-windows { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 12px; overflow-x: hidden; overflow-y: auto; }
+.rom-window { flex: none; min-width: 0; border-radius: 9px; overflow: hidden; background: var(--rom-window); box-shadow: 0 0 0 1px var(--rom-hairline); }
+.rom-window.selected { box-shadow: 0 0 0 1.5px rgba(84, 153, 255, 0.75); }
+
+.rom-titlebar { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px 6px 12px; background: var(--rom-titlebar); }
+.rom-title-row { display: flex; align-items: center; gap: 10px; min-height: 24px; }
+.rom-title-row.end { justify-content: flex-end; }
+.rom-title-row > .spacer { min-width: 0; margin: 0 -1px; }
+.rom-title-items { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; overflow: hidden; }
+.rom-title { min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.rom-readonly { display: inline-flex; align-items: center; gap: 4px; flex: none; font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.rom-readonly .icon { width: 10px; height: 10px; stroke-width: 2.4; }
+.rom-menus { display: flex; flex: none; gap: 2px; }
+.btn.plain.rom-menu { height: 22px; padding: 0 7px; border-radius: 5px; font-size: 12px; color: var(--text-2); }
+.rom-switches { display: flex; align-items: center; flex: none; gap: 10px; }
+/* On a row of their own, in a window too narrow even for that, the switches fold rather than be cut off. */
+.rom-title-row.end .rom-switches { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; }
+.rom-title-row.end .rom-segments { flex: 0 1 auto; flex-wrap: wrap; }
+
+.rom-map-body { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 10px; }
+.rom-map-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 11.5px; color: var(--text-2); }
+.rom-axis-title, .rom-row-title span, .rom-value-title { font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.rom-axis-title { overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.rom-map-table { display: flex; align-items: center; gap: 6px; }
+/* The name of the axis beside the rows, written upwards. */
+.rom-row-title { position: relative; flex: none; width: 16px; }
+.rom-row-title span { position: absolute; left: 50%; top: 50%; overflow: hidden; text-overflow: ellipsis; text-align: center; transform: translate(-50%, -50%) rotate(-90deg); }
+/* A table that is narrower than the window stands in the middle of it. */
+.rom-grid-area { flex: 1 1 0; min-width: 0; display: flex; justify-content: center; }
+.rom-scroll-note { align-items: center; font-size: 11.5px; color: var(--rom-orange-text); white-space: nowrap; }
+.rom-map-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; }
+.rom-value-title { min-width: 0; }
+.rom-map-error { padding: 12px; font-size: 12px; color: var(--rom-orange-text); }
+
+/* The table: the labels in front of the rows, and the cells with the labels above the columns.
+   A table that scrolls sideways keeps the labels of its rows where they are. */
+.rom-grid { display: flex; align-self: flex-start; padding: 5px; font-family: var(--font-mono); font-weight: 600; }
+.rom-grid.scrolls { align-self: stretch; flex: 1 1 0; min-width: 0; padding: 0 0 0 5px; }
+.rom-grid-labels { display: grid; flex: none; gap: 1px; margin-right: 1px; }
+.rom-grid.scrolls .rom-grid-labels { align-self: flex-start; margin: 5px 0 0; }
+.rom-grid.scrolls .rom-grid-scroll { flex: 1 1 0; min-width: 0; padding: 5px; overflow-x: auto; overflow-y: hidden; }
+.rom-grid-cells { position: relative; display: grid; gap: 1px; width: max-content; }
+.rom-axis-cell { display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--rom-axis); color: var(--text); font-weight: 700; white-space: nowrap; }
+.rom-cell { position: relative; display: flex; align-items: center; justify-content: center; color: #0d0e10; white-space: nowrap; }
+/* This ROM's number on top, the other ROM's below it. */
+.rom-cell.two { flex-direction: column; line-height: 14px; }
+.rom-cell small { font-size: calc(1em - 1.5px); font-weight: 700; color: #3b0764; }
+/* The small cell in a legend, in the colour of no place on the heat scale. */
+.rom-sample { position: relative; flex: none; width: 26px; height: 16px; margin: 3px; background: #f2b46e; }
+/* The cells of a Difference view: raised, lowered, and the same as it was. */
+.fill-raised { background: #ffb469; font-weight: 700; }
+.fill-lowered { background: #9cc2ff; font-weight: 700; }
+.fill-plain { background: var(--rom-plain); color: var(--rom-plain-text); font-weight: 500; }
+
+/* The ring of a marked cell: two pixels in its colour just inside the cell, two of white just
+   outside it, and a triangle in the corner that points up for raised and down for lowered. A cell
+   whose own colour says raised or lowered has no triangle. */
+.mark-raised { --ring: #b3001b; }
+.mark-lowered { --ring: #0b3fc4; }
+.mark-different { --ring: #6b21a8; }
+.marked { z-index: 1; box-shadow: inset 0 0 0 2px var(--ring), 0 0 0 2px #fff; }
+.mark-raised:not(.fill-raised)::after, .mark-lowered:not(.fill-lowered)::after { content: ""; position: absolute; right: 3px; border-left: 4px solid transparent; border-right: 4px solid transparent; }
+.mark-raised:not(.fill-raised)::after { top: 2px; border-bottom: 6px solid var(--ring); }
+.mark-lowered:not(.fill-lowered)::after { bottom: 2px; border-top: 6px solid var(--ring); }
+
+/* The selection is a block of cells: a white and a blue ring around the whole of it, and a thin
+   blue line inside each cell of a block of more than one. */
+.rom-cell.selected { box-shadow: inset 0 0 0 1.5px var(--rom-selection); }
+.rom-cell.selected.marked { box-shadow: inset 0 0 0 1.5px var(--rom-selection), inset 0 0 0 2px var(--ring), 0 0 0 2px #fff; }
+.rom-selection, .rom-typed { position: absolute; inset: 0; pointer-events: none; }
+.rom-selection { z-index: 3; box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--rom-selection); }
+/* A number is being typed: it shows in the cell the selection ends on, on white. */
+.rom-typed { z-index: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff; color: #0d0e10; font-weight: 700; }
+.rom-typed i { width: 1.5px; align-self: stretch; margin: 4px 0 4px 1px; background: var(--rom-selection); }
+
+/* What the rings mean, under the table. */
+.rom-legend { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.rom-legend > span { display: inline-flex; align-items: center; gap: 4px; }
+/* A cell without a ring is close to the colour behind it: a thin line sets it apart. */
+.rom-sample:not(.marked) { box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.6); }
+
+/* The strip under the selected map, which describes the selected cell. */
+.rom-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 18px; padding: 7px 10px; border-radius: 7px; background: var(--rom-inset); font-size: 12px; white-space: nowrap; }
+.rom-strip .rom-btn { font-size: 12px; }
+
+/* A switch: the position the ROM is in, as a tag. */
+.rom-switch { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px 10px; font-size: 12px; }
+.rom-switch-tag { display: inline-flex; align-items: center; flex: none; height: 23px; padding: 0 10px; border-radius: 5px; background: #f2b46e; color: #0d0e10; font: 700 12px var(--font-mono); }
+
+/* MARK: The 3D view (js/sections/rom-surface.js) */
+
+.rom-surface-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 8px 12px; border-bottom: 1px solid var(--separator); font-size: 12px; }
+.rom-surface-controls .rom-btn { font-size: 12px; }
+.rom-slider { display: flex; align-items: center; gap: 7px; }
+.rom-slider input { width: 130px; }
+.rom-surface-canvas { display: block; width: 100%; background: var(--rom-backdrop); touch-action: none; }
+.rom-surface-foot { display: flex; align-items: center; gap: 18px; padding: 9px 12px; border-top: 1px solid var(--separator); font-size: 12px; white-space: nowrap; overflow: hidden; }
+/* The lowest value, the colours from it to the highest, and the highest. */
+.rom-scale { display: flex; align-items: center; flex: none; gap: 8px; color: var(--text-2); font-family: var(--font-mono); }
+.rom-heat-bar { width: 180px; height: 10px; border-radius: 5px; }
+
+/* MARK: The Changes panel */
+
+.rom-changes { width: 270px; flex: none; min-height: 0; display: flex; flex-direction: column; gap: 12px; margin: 12px 12px 12px 0; padding: 12px; border-radius: 9px; background: var(--rom-window); box-shadow: 0 0 0 1px var(--rom-hairline); }
+.rom-changes-list { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.rom-change-group { flex: none; display: flex; flex-direction: column; gap: 6px; }
+.rom-change-title { min-width: 0; padding: 0; border: 0; background: transparent; font-weight: 600; text-align: left; }
+.rom-change-title:hover { text-decoration: underline; }
+.rom-change-lines { display: flex; flex-direction: column; gap: 1px; border-radius: 6px; overflow: hidden; }
+.rom-change-lines button { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 0; background: var(--rom-inset); font-size: 12px; text-align: left; }
+.rom-change-lines button:hover { filter: brightness(1.12); }
+.rom-change-numbers { flex: none; font: 12px var(--font-mono); white-space: nowrap; }
+.rom-change-numbers b { font-weight: 700; }
+/* A small triangle that points up for a number that was raised, and down for one that was lowered. */
+.rom-arrow { flex: none; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; }
+.rom-arrow.up { border-bottom: 7px solid var(--rom-raised-arrow); }
+.rom-arrow.down { border-top: 7px solid var(--rom-lowered-arrow); }
+.rom-changes-actions { flex: none; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.rom-changes-actions.mismatch { padding: 9px 10px; border: 1px solid rgba(255, 159, 10, 0.4); border-radius: 8px; background: rgba(255, 159, 10, 0.14); }
+.rom-changes-actions .rom-btn { font-size: 12px; }
+
+/* MARK: The overview, and the editor without a ROM */
+
+.rom-overview { flex: none; display: flex; flex-direction: column; gap: 12px; }
+/* Two cards beside each other where there is room for both, each row as tall as its taller card. */
+.rom-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(330px, calc(50% - 6px)), 1fr)); gap: 12px; }
+.rom-card { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 9px; background: var(--rom-window); box-shadow: 0 0 0 1px var(--rom-hairline); }
+.rom-card-title { font-size: 14px; font-weight: 700; }
+.rom-card .rom-btn { font-size: 12px; }
+.rom-file-rows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; font-size: 12.5px; overflow-wrap: anywhere; }
+.rom-notice { flex: none; display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid rgba(255, 159, 10, 0.4); border-radius: 9px; background: rgba(255, 159, 10, 0.12); }
+.rom-notice > .icon { margin-top: 1px; color: var(--rom-orange); }
+.rom-notice-title { font-weight: 700; color: var(--rom-orange-text); }
+/* The bytes of the ROM, sixteen to a line. */
+.rom-hex { align-self: stretch; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 7px; overflow-x: auto; background: var(--rom-field); font: 12px var(--font-mono); white-space: pre; }
+.rom-hex > div { display: flex; gap: 12px; }
+
+.rom-start { flex: 1 1 auto; min-height: 0; padding: 20px; overflow-y: auto; background: var(--rom-workspace); }
+.rom-start-column { display: flex; flex-direction: column; gap: 12px; max-width: 820px; margin: 0 auto; }
+.rom-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 36px 0; text-align: center; }
 .rom-empty > .icon { width: 44px; height: 44px; stroke-width: 1.4; color: var(--text-2); }
 .rom-empty > .btn { margin-top: 4px; }
+
+/* MARK: Advanced mode off, and the question before it turns on */
+
 .rom-locked { gap: 14px; }
 .rom-locked > .icon { color: var(--text-2); }
-
-/* The File card: what it is, and what it says. */
-.rom-row { display: flex; align-items: flex-start; gap: 8px; }
-.rom-row > :first-child { width: 130px; flex: none; }
-.rom-row > :last-child { min-width: 0; overflow-wrap: anywhere; }
-
-/* A map: its name, and its numbers as a table that scrolls both ways. */
-.rom-map { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; min-width: 0; }
-.rom-map-picker { max-width: min(360px, 100%); }
-.rom-readonly { display: inline-flex; align-items: center; gap: 4px; }
-.rom-readonly .icon { width: 11px; height: 11px; }
-.rom-grid-scroll { max-height: 360px; overflow: auto; padding: 4px; border-radius: 8px; background: color-mix(in srgb, var(--text) 4%, transparent); }
-.rom-grid { display: grid; gap: 1px; width: max-content; align-items: center; font: 11px var(--font-mono); }
-.rom-axis { padding: 0 4px; text-align: right; white-space: nowrap; font: 10px var(--font); font-variant-numeric: tabular-nums; color: var(--text-2); }
-.rom-cell { width: 100%; min-width: 0; height: 20px; padding: 0 4px; border: 0; border-radius: 0; outline: none; text-align: right; font: inherit; color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); user-select: text; }
-.rom-cell:focus { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.rom-cell:disabled { color: var(--text-3); }
-.btn.link.rom-suggestion { align-self: flex-start; }
-
-/* The bytes of the ROM, sixteen to a line. */
-.rom-hex { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 8px; overflow-x: auto; white-space: pre; font: 11px var(--font-mono); background: color-mix(in srgb, var(--text) 4%, transparent); }
-.rom-hex > div { display: flex; gap: 10px; }
-
-/* The question before Advanced mode turns on. It also lies over Settings, where it is asked for. */
+/* The question also lies over Settings, where it is asked for. */
 .rom-sheet-layer { position: fixed; inset: 0; z-index: 55; }
 .rom-disclaimer { display: flex; flex-direction: column; gap: 16px; padding: 22px; min-height: 0; }
 .rom-disclaimer .rom-label > .icon { width: 1.1em; height: 1.1em; margin-top: 0.15em; }

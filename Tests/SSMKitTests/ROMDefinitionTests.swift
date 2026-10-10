@@ -180,6 +180,93 @@ struct ROMDefinitionTests {
         #expect(table.values[0] == [Double(0x1234), Double(0x5678)])
     }
 
+    // MARK: 2D maps the way RomRaider's Subaru definitions write them
+
+    // Their length is `sizey` and their one axis is a Y axis, here once kept in the definition and
+    // once in the ROM.
+    static let twoDXML = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <roms>
+      <rom>
+        <romid><xmlid>32BITBASE</xmlid></romid>
+        <table type="2D" name="Boost Compensation" category="Boost" storagetype="uint8" endian="big" sizey="4">
+          <scaling units="%" expression="x-100" to_byte="x+100" format="0"/>
+          <table type="Static Y Axis" name="Coolant Temperature" sizey="4"><data>-40</data><data>0</data><data>40</data><data>80</data></table>
+        </table>
+        <table type="2D" name="Idle Speed" category="Idle" storagetype="uint16" endian="big" sizey="3">
+          <scaling units="RPM" expression="x" to_byte="x" format="0"/>
+          <table type="Y Axis" name="Coolant Temperature" storagetype="uint8" sizey="3">
+            <scaling units="C" expression="x-40" to_byte="x+40" format="0"/>
+          </table>
+        </table>
+      </rom>
+      <rom base="32BITBASE">
+        <romid><xmlid>TESTROM1</xmlid><internalidaddress>2000</internalidaddress><internalidstring>TESTROM1</internalidstring></romid>
+        <table name="Boost Compensation" storageaddress="0x4000"/>
+        <table name="Idle Speed" storageaddress="0x4100"><table type="Y Axis" storageaddress="0x4180"/></table>
+      </rom>
+    </roms>
+    """
+
+    static func twoDTables() throws -> (rom: ROMImage, tables: [ROMTableDef], scalings: [String: ROMScaling]) {
+        var data = Self.makeROM().data
+        for (i, b) in [UInt8(90), 100, 110, 125].enumerated() { data[0x4000 + i] = b }
+        putBE(&data, 0x4100, 1500); putBE(&data, 0x4102, 1100); putBE(&data, 0x4104, 750)
+        for (i, b) in [UInt8(20), 60, 120].enumerated() { data[0x4180 + i] = b }
+        let set = try ROMDefinitionParser.load(data: Data(twoDXML.utf8))
+        return (ROMImage(data: data), set.resolvedTables(forXmlID: "TESTROM1"), set.scalings)
+    }
+
+    @Test func aTwoDMapWithItsLengthAsSizeYIsReadWhole() throws {
+        let (rom, tables, scalings) = try Self.twoDTables()
+        let boost = try ROMTable.read(rom, def: try #require(tables.first { $0.name == "Boost Compensation" }), scalings: scalings)
+        #expect(boost.rows == 1 && boost.columns == 4)
+        #expect(boost.values == [[-10, 0, 10, 25]])
+        // Its one axis runs along the columns, whatever the definition calls it.
+        #expect(boost.xLabels == [-40, 0, 40, 80])
+
+        let idle = try ROMTable.read(rom, def: try #require(tables.first { $0.name == "Idle Speed" }), scalings: scalings)
+        #expect(idle.values == [[1500, 1100, 750]])
+        #expect(idle.xLabels == [-20, 20, 80])   // read from the ROM
+    }
+
+    @Test func theLastCellOfSuchAMapCanBeEditedAndIsSeenAsAChange() throws {
+        let (rom, tables, scalings) = try Self.twoDTables()
+        let boost = try ROMTable.read(rom, def: try #require(tables.first { $0.name == "Boost Compensation" }), scalings: scalings)
+        let edited = try boost.write(rom, row: 0, column: 3, realValue: 30)
+        #expect(edited.data[0x4003] == 130)
+        // A change beyond the first cell is in the map, not a byte "the definitions have no map for".
+        let changes = try ROMComparison(rom, edited, tables: tables, scalings: scalings)
+        #expect(changes.maps.map(\.name) == ["Boost Compensation"])
+        #expect(changes.maps.first?.cells == [.init(row: 0, column: 3, first: 25, second: 30)])
+        #expect(changes.bytesOutsideMaps == 0)
+        // So is a changed label of an axis that the ROM keeps.
+        var data = rom.data
+        data[0x4182] = 130
+        let axis = try ROMComparison(rom, ROMImage(data: data), tables: tables, scalings: scalings)
+        #expect(axis.maps.first?.name == "Idle Speed")
+        #expect(axis.maps.first?.xAxis?.labels == [.init(index: 2, first: 80, second: 90)])
+        #expect(axis.bytesOutsideMaps == 0)
+    }
+
+    /// The real file: every 2D map of every ROM gives its length as `sizey`, and is read that long.
+    @Test func everyTwoDMapInRomRaidersDefinitionsHasItsWholeLength() throws {
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("definitions/ecu_defs.xml")
+        guard let data = try? Data(contentsOf: file) else { return }   // not there: nothing to check
+        let set = try ROMDefinitionParser.load(data: data)
+        var longer = 0
+        for table in set.resolvedTables(forXmlID: "AZ1G202I") where table.dimension == .twoD {
+            #expect(table.gridSize.rows == 1)
+            #expect(table.gridSize.columns == max(table.sizeX, table.sizeY), "\(table.name)")
+            if table.gridSize.columns > 1 { longer += 1 }
+            // The axis is as long as the map.
+            if let axis = table.columnAxis, axis.size > 1 { #expect(axis.size == table.gridSize.columns, "\(table.name)") }
+        }
+        // Most of them are longer than one number: none would mean this test looked at nothing.
+        #expect(longer > 50)
+    }
+
     // MARK: Writing (round-trips)
 
     @Test func writesCellAndReadsItBack() throws {

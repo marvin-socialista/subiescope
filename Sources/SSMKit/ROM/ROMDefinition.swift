@@ -110,9 +110,15 @@ public struct ROMScaling: Sendable, Equatable {
     public var format: String
     public var min: Double?
     public var max: Double?
+    /// RomRaider's two step sizes for raising and lowering a value with its fine and coarse buttons,
+    /// in real units (`fineincrement` and `coarseincrement`: .08 and 1 for a boost target in psi).
+    /// Nil when the definition gives none.
+    public var fineIncrement: Double?
+    public var coarseIncrement: Double?
 
     public init(name: String? = nil, units: String = "", expression: String = "x", toByte: String = "x",
-                format: String = "0.00", min: Double? = nil, max: Double? = nil) {
+                format: String = "0.00", min: Double? = nil, max: Double? = nil,
+                fineIncrement: Double? = nil, coarseIncrement: Double? = nil) {
         self.name = name
         self.units = units
         self.expression = expression
@@ -120,10 +126,62 @@ public struct ROMScaling: Sendable, Equatable {
         self.format = format
         self.min = min
         self.max = max
+        self.fineIncrement = fineIncrement
+        self.coarseIncrement = coarseIncrement
     }
 
     /// True when a real value can be written back (there is a real→byte formula).
     public var isWritable: Bool { !toByte.isEmpty && toByte != " " }
+
+    /// How many decimals the RomRaider format shows: two for "0.00", none for "#".
+    public var decimals: Int {
+        guard let dot = format.firstIndex(of: ".") else { return 0 }
+        return format.distance(from: format.index(after: dot), to: format.endIndex)
+    }
+
+    /// A real value as text, with as many decimals as the RomRaider format has ("0.00" gives two).
+    public func text(_ value: Double) -> String {
+        String(format: "%.\(decimals)f", value)
+    }
+
+    /// The difference between two real values as text, always with its sign: "+0.77", "-3.41".
+    public func signedText(_ difference: Double) -> String {
+        let text = self.text(difference)
+        return difference > 0 && !text.hasPrefix("+") ? "+" + text : text
+    }
+
+    /// The step the fine buttons take: the definition's, or else the smallest step the format shows
+    /// (0.01 for "0.00"). Always above zero, so "up" raises the number.
+    public var fineStep: Double {
+        if let fine = fineIncrement, fine != 0, fine.isFinite { return abs(fine) }
+        return pow(10, -Double(decimals))
+    }
+
+    /// The step the coarse buttons take: the definition's, or else ten fine steps.
+    public var coarseStep: Double {
+        if let coarse = coarseIncrement, coarse != 0, coarse.isFinite { return abs(coarse) }
+        return fineStep * 10
+    }
+
+    /// The unit to put after a single number. RomRaider's units are often a whole title, such as
+    /// "Boost Target (psi relative sea level)": that gives "psi", "Target Boost (psia) Compensation (%)"
+    /// gives "%", and a short unit ("RPM", "Degrees F") stays as it is. Empty for a long text
+    /// without a unit in brackets ("raw ecu value"), which says nothing after a number.
+    public var shortUnits: String {
+        let text = units.trimmingCharacters(in: .whitespaces)
+        if text.hasSuffix(")"), let open = text.lastIndex(of: "(") {
+            let inner = text[text.index(after: open)..<text.index(before: text.endIndex)].trimmingCharacters(in: .whitespaces)
+            // A raw value is the ECU's own number: it has no unit to name.
+            if inner.lowercased().hasPrefix("raw") { return "" }
+            if inner.count <= Self.shortUnitLength { return inner }
+            let first = inner.split(separator: " ").first.map(String.init) ?? ""
+            return first.count <= Self.shortUnitLength ? first : ""
+        }
+        return text.count <= Self.shortUnitLength ? text : ""
+    }
+
+    /// The longest text that still reads as a unit after a number.
+    static let shortUnitLength = 12
 }
 
 public struct ROMAxis: Sendable, Equatable {
@@ -152,8 +210,39 @@ public struct ROMAxis: Sendable, Equatable {
     }
 }
 
+/// One position of a RomRaider switch: its name ("on" or "off") and the bytes the ROM holds at the
+/// switch's address when it is in that position.
+public struct ROMSwitchState: Sendable, Equatable {
+    public var name: String
+    public var data: [UInt8]
+
+    public init(name: String, data: [UInt8]) {
+        self.name = name
+        self.data = data
+    }
+}
+
 public struct ROMTableDef: Sendable, Equatable {
-    public enum Dimension: String, Sendable { case oneD = "1D", twoD = "2D", threeD = "3D", other = "" }
+    /// RomRaider's kinds of table: one number, a row of numbers, a grid of them, and a switch,
+    /// which is no number at all but one of a few fixed byte patterns (see `states`).
+    public enum Dimension: String, Sendable { case oneD = "1D", twoD = "2D", threeD = "3D", `switch` = "Switch", other = "" }
+
+    /// The grid the map's numbers form in the ROM. A 3D map is `sizeX` columns by `sizeY` rows. A 2D
+    /// map is one row. RomRaider's Subaru definitions give its length as `sizey` (every one of the 2D
+    /// maps in ecu_defs.xml does), others as `sizex`, so the larger of the two is taken. Anything
+    /// else is a single number.
+    public var gridSize: (rows: Int, columns: Int) {
+        switch dimension {
+        case .threeD: return (max(sizeY, 1), max(sizeX, 1))
+        case .twoD: return (1, max(sizeX, sizeY, 1))
+        case .oneD, .switch, .other: return (1, max(sizeX, 1))
+        }
+    }
+
+    /// The axis along the columns. A 2D map has one axis, and those definitions call it its Y axis.
+    public var columnAxis: ROMAxis? { dimension == .twoD ? (xAxis ?? yAxis) : xAxis }
+    /// The axis along the rows. Only a 3D map has one.
+    public var rowAxis: ROMAxis? { dimension == .threeD ? yAxis : nil }
 
     public var name: String
     public var category: String
@@ -170,11 +259,14 @@ public struct ROMTableDef: Sendable, Equatable {
     public var xAxis: ROMAxis?
     public var yAxis: ROMAxis?
     public var description: String
+    /// The positions of a switch, each with its bytes. Empty for a table of numbers.
+    public var states: [ROMSwitchState]
 
     public init(name: String, category: String = "", dimension: Dimension = .other,
                 storageType: ROMStorageType? = nil, bigEndian: Bool = true, address: Int? = nil,
                 sizeX: Int = 1, sizeY: Int = 1, scalingName: String? = nil, scaling: ROMScaling? = nil,
-                xAxis: ROMAxis? = nil, yAxis: ROMAxis? = nil, description: String = "") {
+                xAxis: ROMAxis? = nil, yAxis: ROMAxis? = nil, description: String = "",
+                states: [ROMSwitchState] = []) {
         self.name = name
         self.category = category
         self.dimension = dimension
@@ -188,10 +280,22 @@ public struct ROMTableDef: Sendable, Equatable {
         self.xAxis = xAxis
         self.yAxis = yAxis
         self.description = description
+        self.states = states
     }
 
     /// A table can be shown and edited only when it has an address and a numeric storage type.
     public var isEditable: Bool { address != nil && storageType != nil }
+
+    /// A switch whose position can be read from a ROM: it has an address and its positions' bytes.
+    public var isSwitch: Bool { dimension == .switch && address != nil && !states.isEmpty }
+
+    /// The position a switch is in: the one whose bytes the ROM holds at the switch's address. Nil
+    /// for a table that is no switch, and for bytes that are none of its positions (a ROM that was
+    /// edited by hand there, or a definition that does not fit this ROM).
+    public func switchState(in rom: ROMImage) -> ROMSwitchState? {
+        guard isSwitch, let address else { return nil }
+        return states.first { !$0.data.isEmpty && rom.bytes(at: address, length: $0.data.count) == $0.data }
+    }
 }
 
 public struct ROMIdentity: Sendable, Equatable {
@@ -350,6 +454,7 @@ extension ROMTableDef {
         if child.xAxis != nil { xAxis = mergeAxis(xAxis, child.xAxis!) }
         if child.yAxis != nil { yAxis = mergeAxis(yAxis, child.yAxis!) }
         if !child.description.isEmpty { description = child.description }
+        if !child.states.isEmpty { states = child.states }
         // Endian is big by default; only a child that states little overrides.
         if !child.bigEndian { bigEndian = false }
     }
