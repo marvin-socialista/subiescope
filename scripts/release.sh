@@ -4,6 +4,10 @@
 #   scripts/release.sh               build + notarize build/SubieScope.dmg
 #   PUBLISH=1 scripts/release.sh     also create the GitHub release v$(cat VERSION)
 #
+# The Windows version is built on a PC (scripts/dev/windows-pc.sh sync, package, fetch). When its zip is
+# in build/ it goes into the release too, as SubieScope-windows-x64.zip: a name without the version, so
+# the website's link to the latest one keeps working.
+#
 # Needs a "Developer ID Application" certificate in the keychain and a notarytool
 # keychain profile (xcrun notarytool store-credentials).
 set -euo pipefail
@@ -15,10 +19,24 @@ NOTARY_PROFILE="${NOTARY_PROFILE:-claude-resumer-notary}"
 PUBLISH="${PUBLISH:-0}"
 DMG="build/SubieScope.dmg"
 NOTES="docs/release-notes/${VERSION}.md"
+WINDOWS_ZIP="build/SubieScope-${VERSION}-windows-x64.zip"
 
 if ! security find-identity -v -p codesigning | grep -qF "$SIGN_IDENTITY"; then
   echo "Signing identity not found: $SIGN_IDENTITY" >&2
   exit 1
+fi
+
+if [ "$PUBLISH" = "1" ]; then
+  if [ ! -f "$NOTES" ]; then
+    echo "Missing release notes: $NOTES" >&2
+    exit 1
+  fi
+  # GitHub makes the release's tag on the main branch, so what is built here has to be what is there.
+  git fetch -q origin main
+  if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+    echo "This commit is not the newest one on origin/main: push it first." >&2
+    exit 1
+  fi
 fi
 
 swift test
@@ -46,9 +64,12 @@ spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG
 echo "Notarized $DMG"
 
 if [ "$PUBLISH" = "1" ]; then
-  if [ ! -f "$NOTES" ]; then
-    echo "Missing release notes: $NOTES" >&2
-    exit 1
+  FILES=("$DMG")
+  if [ -f "$WINDOWS_ZIP" ]; then
+    cp "$WINDOWS_ZIP" build/SubieScope-windows-x64.zip
+    FILES+=(build/SubieScope-windows-x64.zip)
+  else
+    echo "No $WINDOWS_ZIP: this release goes out without the Windows version." >&2
   fi
-  gh release create "v${VERSION}" "$DMG" --title "SubieScope ${VERSION}" --notes-file "$NOTES"
+  gh release create "v${VERSION}" "${FILES[@]}" --title "SubieScope ${VERSION}" --notes-file "$NOTES"
 fi

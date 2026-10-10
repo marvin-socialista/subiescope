@@ -11,6 +11,7 @@
 #   scripts/dev/windows-pc.sh build [swift build arguments]    build there and print only the errors
 #   scripts/dev/windows-pc.sh test [filter]        run the tests there and print failures and the summary
 #   scripts/dev/windows-pc.sh package [-KeepDefinitions]       scripts\build-windows.ps1
+#   scripts/dev/windows-pc.sh fetch                copy the zip that "package" made to build/ here, for scripts/release.sh
 #   scripts/dev/windows-pc.sh start [app arguments...]   start the debug build on the PC's desktop, in the background, with the
 #                                                        page loaded from the source tree and its debug port (9339) open.
 #                                                        Without app arguments: the demo car, connected.
@@ -42,9 +43,15 @@ sync)
 build)   remote "$helper build $*" ;;
 test)    remote "$helper test $*" ;;
 package) remote "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-windows.ps1 $* 2>&1 | Select-Object -Last 4" ;;
+fetch)
+  zip="SubieScope-$(cat "$REPO/VERSION")-windows-x64.zip"
+  mkdir -p "$REPO/build"
+  scp -q -i "$WINDOWS_PC_KEY" -o IdentitiesOnly=yes -o BatchMode=yes "$WINDOWS_PC:${DIR//\\//}/build/$zip" "$REPO/build/$zip"
+  ls -lh "$REPO/build/$zip"
+  ;;
 start)   remote "$helper start $*" ;;
 stop)    remote "$helper stop" ;;
 tunnel)  exec "${SSH[@]}" -o ExitOnForwardFailure=yes -N -L 9339:127.0.0.1:9339 "$WINDOWS_PC" ;;
 run)     remote "$*" ;;
-*) echo "usage: windows-pc.sh sync|build|test|package|start|stop|tunnel|run (see the top of this file)"; exit 2;;
+*) echo "usage: windows-pc.sh sync|build|test|package|fetch|start|stop|tunnel|run (see the top of this file)"; exit 2;;
 esac

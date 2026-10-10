@@ -43,7 +43,10 @@ switch ($Command) {
         '--- {0} error lines; last line: {1}' -f @($errors).Count, ($out | Select-Object -Last 1)
     }
     'test' {
-        $arguments = if ($Rest.Count) { "test --filter `"$($Rest[0])`"" } else { 'test' }
+        # The whole suite runs one test at a time here. Side by side it stops for good on this PC since the suite
+        # passed about 270 tests (each group passes by itself, and a Mac runs them all side by side): the tests
+        # that wait for a simulated cable or adapter leave no thread free for it. Costs about two minutes.
+        $arguments = if ($Rest.Count) { "test --filter `"$($Rest[0])`"" } else { 'test --no-parallel' }
         $out = Clean (& cmd /c "swift $arguments 2>&1")
         $out | Where-Object { $_ -match '(: error: |recorded an issue|failed after|Test run with|crashed|Fatal error|^error:)' } | Select-Object -Unique -First 60 |
             ForEach-Object { if ($_.Length -gt 420) { $_.Substring(0, 420) } else { $_ } }
