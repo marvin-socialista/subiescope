@@ -243,7 +243,8 @@ struct ISOTPTransportTests {
 /// A stand-in Denso SH7058 ECU that answers the connect/unlock, kernel upload and page-read sequence
 /// at the payload level, so the reader can be driven end to end without a car or an adapter.
 class SimulatedSH7058ECU: SH7058Transport, @unchecked Sendable {
-    let rom: [UInt8]
+    /// The flash. `SimulatedSH7058Flash` (in the write tests) changes it.
+    var rom: [UInt8]
     let seed: [UInt8] = [0x12, 0x34, 0x56, 0x78]
     private(set) var kernelRunning = false
     private(set) var uploadedBlocks: [UInt8] = []

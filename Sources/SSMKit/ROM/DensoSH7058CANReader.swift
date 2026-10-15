@@ -8,7 +8,8 @@ import Foundation
 /// RAM, which is gone the moment the ignition is cycled.
 ///
 /// Ported from the READ path of FastECU's `flash_ecu_subaru_denso_sh7058_can.cpp` (GPLv3):
-/// `connect_bootloader`, `upload_kernel` and `read_mem`. The write path was deliberately not ported.
+/// `connect_bootloader`, `upload_kernel` and `read_mem`. Writing lives in `DensoSH7058CANWriter`,
+/// which starts the kernel through this reader and is switched off.
 ///
 /// It has read one real car: a 2009 JDM Impreza WRX STI (ECU ID 6904784007, AZ1G500F) through a
 /// Tactrix OpenPort on 10 October 2026, 1 MB in 55 seconds, with every checksum in the ROM right.
@@ -100,15 +101,7 @@ public final class DensoSH7058CANReader {
     // MARK: Top level
 
     public func read() throws -> ReadResult {
-        try checkCancel()
-        report(.connecting, bytesRead: 0, "Waking the ECU and unlocking it")
-        let identity = try connectBootloader()
-
-        if !identity.kernelAlreadyRunning {
-            try checkCancel()
-            report(.uploadingKernel, bytesRead: 0, "Loading the helper program into the ECU")
-            try uploadKernel()
-        }
+        let identity = try startKernel()
 
         try checkCancel()
         report(.reading, bytesRead: 0, "Reading the ROM")
@@ -119,9 +112,24 @@ public final class DensoSH7058CANReader {
                           calibrationID: identity.calibrationID, vin: identity.vin)
     }
 
+    /// Wakes and unlocks the ECU and loads the kernel, or finds it still running from an earlier
+    /// run. Reading and writing both start this way.
+    func startKernel() throws -> Identity {
+        try checkCancel()
+        report(.connecting, bytesRead: 0, "Waking the ECU and unlocking it")
+        let identity = try connectBootloader()
+
+        if !identity.kernelAlreadyRunning {
+            try checkCancel()
+            report(.uploadingKernel, bytesRead: 0, "Loading the helper program into the ECU")
+            try uploadKernel()
+        }
+        return identity
+    }
+
     // MARK: Connect / unlock
 
-    private struct Identity {
+    struct Identity {
         var ecuID: String?
         var calibrationID: String?
         var vin: String?
@@ -251,7 +259,7 @@ public final class DensoSH7058CANReader {
         return data
     }
 
-    private func readPage(at address: UInt32) throws -> [UInt8] {
+    func readPage(at address: UInt32) throws -> [UInt8] {
         let size = Self.pageSize
         let payload: [UInt8] = [
             UInt8(Self.kernelStartComm >> 8), UInt8(Self.kernelStartComm & 0xFF),

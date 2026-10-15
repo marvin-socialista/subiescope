@@ -1,9 +1,10 @@
 import Foundation
 
 /// The pure maths behind reading a Denso SH7058 "subarucan" ECU over CAN: the security-access
-/// seed-to-key answer, the little block cipher that scrambles the kernel before it is uploaded, and
-/// the framing of that upload. None of this touches a car or a serial port, so it is all testable on
-/// its own, which matters because the on-car path cannot be tested here.
+/// seed-to-key answer, the little block cipher that scrambles the kernel before it is uploaded, the
+/// framing of that upload, and the kernel's CRC that writing compares flash with. None of this
+/// touches a car or a serial port, so it is all testable on its own, which matters because the
+/// on-car path cannot be tested here.
 ///
 /// This is a direct port of the read path in FastECU's
 /// `flash_ecu_subaru_denso_sh7058_can.cpp` (GPLv3): `generate_seed_key` / `calculate_seed_key`,
@@ -174,5 +175,32 @@ public enum DensoCAN {
 
         return KernelUpload(encryptedPayload: encryptPayload(payload),
                             blockCount: blocks, dataLength: dataLength, startAddress: startAddress)
+    }
+
+    // MARK: Kernel CRC
+
+    /// The polynomial of the kernel's CRC. It is the same number as the checksum magic.
+    static let kernelCRCPolynomial: UInt32 = 0x5AA5A55A
+
+    static let kernelCRCTable: [UInt32] = (0..<256).map { index in
+        var crc: UInt32 = 0
+        var c = UInt32(index)
+        for _ in 0..<8 {
+            crc = (crc ^ c) & 1 != 0 ? (crc >> 1) ^ kernelCRCPolynomial : crc >> 1
+            c >>= 1
+        }
+        return crc
+    }
+
+    /// The CRC the kernel reports for a stretch of flash, and checks its write buffer against before
+    /// it commits it. It is built like the usual CRC-32 (reflected, starting from all ones, inverted
+    /// at the end) but with 0x5AA5A55A as its polynomial, so an ordinary CRC-32 gives other answers.
+    /// FastECU's `crc32` and the bundled kernel (which builds its table from 0x5AA5A55A) agree.
+    public static func kernelCRC<Bytes: Collection>(_ bytes: Bytes) -> UInt32 where Bytes.Element == UInt8 {
+        var crc: UInt32 = 0xFFFF_FFFF
+        for byte in bytes {
+            crc = kernelCRCTable[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
+        }
+        return crc ^ 0xFFFF_FFFF
     }
 }
