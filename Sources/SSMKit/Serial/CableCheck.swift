@@ -66,7 +66,7 @@ public enum CableChip: Sendable, Hashable {
         case .cp210x:
             return "Windows usually installs the driver for Silicon Labs chips by itself. If no COM port shows up, install the CP210x VCP driver from silabs.com."
         case .openPort2:
-            return "An original OpenPort 2.0 needs Tactrix's own driver on Windows (it comes with EcuFlash). Is yours a replica? Then do NOT install Tactrix's driver or EcuFlash, and do not plug it into a PC that has them: they update the cable's firmware, and that breaks a replica for good. Windows 10 and 11 should give a replica a COM port by themselves, though that has not been tried yet. SubieScope's support for the cable on Windows is new and experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings to use it. If there is a microSD card in the cable, take it out and plug the cable in again."
+            return "SubieScope talks to the OpenPort 2.0 as a plain USB serial cable (a COM port), so it needs Microsoft's own USB serial driver, not Tactrix's. Windows 10 and 11 often give the cable a COM port by themselves; if one appears, you are ready. If none does, open Device Manager, find the OpenPort, choose Update driver, then \"Let me pick from a list\", and select \"USB Serial Device\". Do NOT install Tactrix's driver or EcuFlash: they do not make a COM port, so they will not help SubieScope, and on a replica cable they rewrite its firmware and break it for good. Support for this cable on a PC is new and has not been tried on real hardware yet, so it is experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings. If there is a microSD card in the cable, take it out and plug it in again."
         case .unknown:
             return "SubieScope doesn't recognise this chip. KKL cables with an FTDI chip work best."
         }
@@ -95,7 +95,9 @@ public enum CableChip: Sendable, Hashable {
         case .ch340: return URL(string: "https://www.wch-ic.com/downloads/CH341SER_EXE.html")
         case .pl2303: return URL(string: "https://www.prolific.com.tw/US/ShowProduct.aspx?p_id=225&pcid=41")
         case .cp210x: return URL(string: "https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers")
-        case .openPort2: return URL(string: "https://www.tactrix.com/index.php?option=com_content&view=category&layout=blog&id=36&Itemid=58")
+        // No link for the OpenPort: it must not go to Tactrix's driver, which breaks a replica and
+        // gives no COM port anyway. The advice explains the built-in "USB Serial Device" route.
+        case .openPort2: return nil
         default: return nil
         }
         #else

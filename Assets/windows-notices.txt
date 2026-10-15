@@ -21,6 +21,12 @@ Microsoft WebView2 loader (WebView2Loader.dll)
   Copyright Microsoft Corporation. BSD-style license.
   https://www.nuget.org/packages/Microsoft.Web.WebView2
 
+OpenPort USB-serial driver helper (openport-driver\wdi-simple.exe)
+  Built from libwdi, copyright Pete Batard, GNU LGPL version 3 or later. Used unmodified
+  except for build configuration. Source and build steps: scripts\fetch-openport-driver.ps1
+  in the repository above. https://github.com/pbatard/libwdi
+  It installs only Microsoft's own in-box USB serial driver (usbser.sys).
+
 Preact and htm (in the window's page)
   Preact: copyright Jason Miller, MIT License. https://preactjs.com
   htm: copyright Google LLC, Apache License 2.0. https://github.com/developit/htm

@@ -21,6 +21,9 @@ if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "VERSION must look like 1.2.3,
 & (Join-Path $PSScriptRoot 'fetch-webview2.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Could not get the WebView2 SDK.' }
 
+& (Join-Path $PSScriptRoot 'fetch-openport-driver.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Could not build the OpenPort driver helper.' }
+
 # A development build carries RomRaider's logger definitions, so the demo car works at once. They are
 # not among the app's resources in git (they have no license that allows shipping them): the copy the
 # app itself downloads from, in the definitions folder, is put there for this build.
@@ -95,6 +98,14 @@ if (-not $KeepDefinitions) {
 Copy-Item '.webview2\x64\WebView2Loader.dll' $app
 Copy-Item VERSION, LICENSE $app
 Copy-Item Assets\windows-notices.txt (Join-Path $app 'NOTICES.txt')
+
+# The helper that puts a Tactrix OpenPort on Microsoft's USB serial driver (a COM port), for the
+# people whose Windows does not do it by itself. It is opt-in: the user runs the install script.
+$driver = Join-Path $app 'openport-driver'
+New-Item -ItemType Directory -Force $driver | Out-Null
+Copy-Item '.openport-driver\wdi-simple.exe', '.openport-driver\NOTICE.txt' $driver
+Copy-Item '.openport-driver\openport_cdc_cc4c.inf', '.openport-driver\openport_cdc_cc4d.inf' $driver
+Copy-Item 'scripts\install-openport-driver.ps1' (Join-Path $driver 'install-openport-driver.ps1')
 
 # The Swift runtime: every one of its DLLs that the two programs use, directly or through another.
 $runtime = Split-Path -Parent (Get-Command swiftCore.dll).Source

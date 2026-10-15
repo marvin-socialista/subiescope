@@ -26,3 +26,9 @@ CLAUDE.md
 
 # Microsoft's WebView2 SDK for the Windows build; scripts/fetch-webview2.ps1 downloads it.
 /.webview2/
+
+# The OpenPort USB-serial driver helper (libwdi); scripts/fetch-openport-driver.ps1 builds it.
+/.openport-driver/
+
+# Tactrix's EcuFlash installer, kept locally for reference only (proprietary, never commit it).
+/ecuflash_*_win.exe
