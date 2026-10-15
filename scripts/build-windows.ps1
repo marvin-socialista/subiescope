@@ -100,12 +100,14 @@ Copy-Item VERSION, LICENSE $app
 Copy-Item Assets\windows-notices.txt (Join-Path $app 'NOTICES.txt')
 
 # The helper that puts a Tactrix OpenPort on Microsoft's USB serial driver (a COM port), for the
-# people whose Windows does not do it by itself. It is opt-in: the user runs the install script.
+# people whose Windows does not do it by itself. It is opt-in: the user runs "Install OpenPort
+# driver.cmd". The built part comes from .openport-driver, the script, .cmd and README from Assets.
 $driver = Join-Path $app 'openport-driver'
 New-Item -ItemType Directory -Force $driver | Out-Null
 Copy-Item '.openport-driver\wdi-simple.exe', '.openport-driver\NOTICE.txt' $driver
+Copy-Item '.openport-driver\COPYING.txt', '.openport-driver\COPYING-LGPL.txt' $driver
 Copy-Item '.openport-driver\openport_cdc_cc4c.inf', '.openport-driver\openport_cdc_cc4d.inf' $driver
-Copy-Item 'scripts\install-openport-driver.ps1' (Join-Path $driver 'install-openport-driver.ps1')
+Copy-Item 'Assets\openport-driver\*' $driver
 
 # The Swift runtime: every one of its DLLs that the two programs use, directly or through another.
 $runtime = Split-Path -Parent (Get-Command swiftCore.dll).Source

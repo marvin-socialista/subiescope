@@ -66,7 +66,7 @@ public enum CableChip: Sendable, Hashable {
         case .cp210x:
             return "Windows usually installs the driver for Silicon Labs chips by itself. If no COM port shows up, install the CP210x VCP driver from silabs.com."
         case .openPort2:
-            return "SubieScope talks to the OpenPort 2.0 as a plain USB serial cable (a COM port), so it needs Microsoft's own USB serial driver, not Tactrix's. Windows 10 and 11 often give the cable a COM port by themselves; if one appears, you are ready. If none does, open Device Manager, find the OpenPort, choose Update driver, then \"Let me pick from a list\", and select \"USB Serial Device\". Do NOT install Tactrix's driver or EcuFlash: they do not make a COM port, so they will not help SubieScope, and on a replica cable they rewrite its firmware and break it for good. Support for this cable on a PC is new and has not been tried on real hardware yet, so it is experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings. If there is a microSD card in the cable, take it out and plug it in again."
+            return "SubieScope talks to the OpenPort 2.0 as a plain USB serial cable (a COM port), so it needs Windows' own USB serial driver, not Tactrix's. Windows 10 and 11 may give the cable a COM port by themselves; if one appears, you are ready. If none does, open the openport-driver folder next to SubieScope.exe and double-click \"Install OpenPort driver\": it puts the cable on Windows' own driver. The README.txt in that folder also explains how to do it by hand in Device Manager. Do NOT install Tactrix's driver or EcuFlash, and do not plug a replica into a PC that has them: with them the cable gets no COM port, so SubieScope cannot use it, and on a replica they rewrite its firmware and break it for good. Support for this cable on a PC is new and has not been tried on real hardware yet, so it is experimental: turn on \"Tactrix OpenPort 2.0 cable\" in Settings. If there is a microSD card in the cable, take it out and plug it in again."
         case .unknown:
             return "SubieScope doesn't recognise this chip. KKL cables with an FTDI chip work best."
         }
@@ -96,7 +96,7 @@ public enum CableChip: Sendable, Hashable {
         case .pl2303: return URL(string: "https://www.prolific.com.tw/US/ShowProduct.aspx?p_id=225&pcid=41")
         case .cp210x: return URL(string: "https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers")
         // No link for the OpenPort: it must not go to Tactrix's driver, which breaks a replica and
-        // gives no COM port anyway. The advice explains the built-in "USB Serial Device" route.
+        // gives no COM port anyway. The advice points at the helper in the zip's openport-driver folder.
         case .openPort2: return nil
         default: return nil
         }

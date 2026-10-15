@@ -120,7 +120,7 @@ extension Bridge {
             let hardware = model.mode == .obd && !Bridge.bluetoothWorks
                 ? "ELM327 adapter (USB, Wi-Fi or Bluetooth paired in Windows)" : model.mode.hardware
             let driver = Bridge.onWindows
-                ? "An original cable needs Tactrix's own driver, which comes with EcuFlash: install that first, then plug the cable in and press Connect. Is yours a replica? Then do NOT install Tactrix's driver or EcuFlash, and do not plug it into a PC that has them: they update the cable's firmware, and that breaks a replica for good. Plug a replica in as it is: Windows 10 and 11 should give it a COM port by themselves, though that has not been tried yet."
+                ? "SubieScope uses Windows' own USB serial driver for this cable, not Tactrix's. Plug the cable in: if it gets a COM port, you are ready. If not, Car > Cable Setup explains how to give it one, with the helper in the openport-driver folder next to SubieScope.exe. Do NOT install Tactrix's driver or EcuFlash, and do not plug a replica into a PC that has them: with them the cable gets no COM port, so SubieScope cannot use it, and they update the cable's firmware, which breaks a replica for good."
                 : "It needs no driver: plug it in and press Connect."
             // On a Mac the cable has been on a car. On a PC it never has.
             let tested = Bridge.onWindows

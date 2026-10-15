@@ -25,6 +25,7 @@ OpenPort USB-serial driver helper (openport-driver\wdi-simple.exe)
   Built from libwdi, copyright Pete Batard, GNU LGPL version 3 or later. Used unmodified
   except for build configuration. Source and build steps: scripts\fetch-openport-driver.ps1
   in the repository above. https://github.com/pbatard/libwdi
+  The license texts are next to it: openport-driver\COPYING-LGPL.txt and COPYING.txt.
   It installs only Microsoft's own in-box USB serial driver (usbser.sys).
 
 Preact and htm (in the window's page)
